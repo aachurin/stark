@@ -1,6 +1,7 @@
 from urllib.parse import urlparse
 
-from stark.codecs import BaseCodec, JSONSchemaCodec
+from stark.codecs.base import BaseCodec
+from stark.codecs.jsonschema import JSONSchemaCodec
 from stark.compat import dict_type
 
 
