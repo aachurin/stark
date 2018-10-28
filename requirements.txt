@@ -1,0 +1,18 @@
+# Core requirements
+apistar
+click
+requests
+pyyaml
+werkzeug
+
+# Optional
+aiofiles
+jinja2
+whitenoise
+
+# Testing requirements
+codecov
+flake8
+isort
+pytest
+pytest-cov
