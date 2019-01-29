@@ -1,8 +1,9 @@
 import json
 import typing
 from urllib.parse import urlparse
-
 from apistar import types
+from stark import codecs
+from stark import exceptions
 
 
 Method = typing.NewType('Method', str)
@@ -42,7 +43,7 @@ class QueryParams(typing.Mapping[str, str]):
     An immutable multidict.
     """
 
-    def __init__(self, value: typing.Union[StrMapping, StrPairs]=None) -> None:
+    def __init__(self, value: typing.Union[StrMapping, StrPairs] = None) -> None:
         if value is None:
             value = []
         if hasattr(value, 'items'):
@@ -99,7 +100,7 @@ class Headers(typing.Mapping[str, str]):
     An immutable, case-insensitive multidict.
     """
 
-    def __init__(self, value: typing.Union[StrMapping, StrPairs]=None) -> None:
+    def __init__(self, value: typing.Union[StrMapping, StrPairs] = None) -> None:
         if value is None:
             value = []
         if hasattr(value, 'items'):
@@ -125,7 +126,7 @@ class Headers(typing.Mapping[str, str]):
     def items(self):
         return list(self._list)
 
-    def get(self, key: str, default: str=None):
+    def get(self, key: str, default: str = None):
         key = key.lower()
         if key in self._dict:
             return self._dict[key]
@@ -173,8 +174,8 @@ class Request:
     def __init__(self,
                  method: Method,
                  url: URL,
-                 headers: Headers=None,
-                 body: Body=None) -> None:
+                 headers: Headers = None,
+                 body: Body = None) -> None:
         self.method = method
         self.url = url
         self.headers = Headers() if (headers is None) else headers
@@ -187,12 +188,12 @@ class Response:
 
     def __init__(self,
                  content: typing.Any,
-                 status_code: int=200,
-                 headers: typing.Union[StrMapping, StrPairs]=None,
+                 status_code: int = 200,
+                 headers: typing.Union[StrMapping, StrPairs] = None,
                  exc_info=None) -> None:
         self.content = self.render(content)
-        self.status_code = status_code
         self.headers = MutableHeaders(headers)
+        self.status_code = status_code
         self.set_default_headers()
         self.exc_info = exc_info
 
@@ -245,3 +246,24 @@ class JSONResponse(Response):
             return dict(obj)
         error = "Object of type '%s' is not JSON serializable."
         raise TypeError(error % type(obj).__name__)
+
+
+class EncodedResponse(Response):
+
+    encoders = {
+        codecs.JSONSchemaCodec.media_type: codecs.JSONSchemaCodec,
+        codecs.JSONCodec.media_type: codecs.JSONCodec,
+        codecs.OpenAPICodec.media_type: codecs.OpenAPICodec,
+        codecs.SwaggerCodec.media_type: codecs.SwaggerCodec
+    }
+
+    def __init__(self, content: typing.Any, media_type: str, **kwargs) -> None:
+        self.media_type = media_type
+        super().__init__(content, **kwargs)
+
+    def render(self, content: typing.Any) -> bytes:
+        try:
+            codec = self.encoders[self.media_type]
+        except KeyError:
+            raise exceptions.UnsupportedMediaType()
+        return codec().encode(content)

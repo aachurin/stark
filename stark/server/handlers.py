@@ -13,9 +13,13 @@ def serve_schema(app: App):
 
 def serve_documentation(app: App):
     template_name = 'apistar/index.html'
-    code_style = None  # pygments_css('emacs')
+    code_style = default_code_style
     return app.render_template(
-        template_name, document=app.document, langs=['javascript', 'python'], code_style=code_style)
+        template_name,
+        document=app.document,
+        langs=['javascript', 'python'],
+        code_style=code_style
+    )
 
 
 def serve_static_wsgi(app: App, environ: WSGIEnviron, start_response: WSGIStartResponse):
@@ -25,3 +29,12 @@ def serve_static_wsgi(app: App, environ: WSGIEnviron, start_response: WSGIStartR
 async def serve_static_asgi(app: App, scope: ASGIScope, receive: ASGIReceive, send: ASGISend):
     instance = app.statics(scope)
     await instance(receive, send)
+
+
+default_code_style = """
+.highlight.python .word{color:#d372e3;}
+.highlight.python .string{color:#8bc76c;}
+.highlight.python .attr{color:#42b0f5;}
+.highlight.python .kwarg{color:#db985c;}
+.highlight.python .global{color:#1fb8c4;}
+"""

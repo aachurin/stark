@@ -1,4 +1,5 @@
 import json
+from apistar.document import Document
 from apistar.schemas.openapi import OPEN_API
 from stark.codecs import DocumentBaseCodec
 
@@ -8,6 +9,9 @@ class OpenAPICodec(DocumentBaseCodec):
     media_type = 'application/vnd.oai.openapi'
 
     def encode(self, document, **options):
+        if not isinstance(document, Document):
+            error = 'Document instance expected.'
+            raise TypeError(error)
         schema_defs = {}
         paths = self.get_paths(document, schema_defs=schema_defs)
         openapi = OPEN_API.validate({

@@ -1,4 +1,5 @@
 import json
+from apistar.document import Document
 from apistar.schemas.swagger import SWAGGER
 from stark.codecs import DocumentBaseCodec
 
@@ -8,6 +9,9 @@ class SwaggerCodec(DocumentBaseCodec):
     media_type = 'application/swagger'
 
     def encode(self, document, **options):
+        if not isinstance(document, Document):
+            error = 'Document instance expected.'
+            raise TypeError(error)
         schema_defs = {}
         paths = self.get_paths(document, schema_defs=schema_defs)
         swagger = SWAGGER.validate({
@@ -35,4 +39,3 @@ class SwaggerCodec(DocumentBaseCodec):
             'separators': (',', ': ')
         }
         return json.dumps(swagger, **kwargs).encode('utf-8')
-

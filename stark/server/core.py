@@ -49,7 +49,8 @@ class Route():
                     int: validators.Integer(),
                     float: validators.Number(),
                     str: validators.String()
-                }[param.annotation]
+                }.get(param.annotation)
+                schema = schema or validators.String()
                 field = Field(name=name, location='path', schema=schema)
                 fields.append(field)
 

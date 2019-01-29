@@ -1,12 +1,18 @@
 import typing
 
 from stark.compat import jinja2
-from stark.utils import get_vdirs
+from stark.utils import get_path
 
 
-def get_jinja_template_loader(dirs, loaders=None):
-    loaders = (loaders or []) + [jinja2.FileSystemLoader(t) for t in dirs]
-    return jinja2.ChoiceLoader(loaders) if len(loaders) > 1 else loaders[0]
+def get_jinja_prefix_loader(dirs):
+    return jinja2.PrefixLoader({
+        prefix: get_jinja_path_loader(path)
+        for prefix, path in dirs.items()
+    })
+
+
+def get_jinja_path_loader(dir):
+    return jinja2.FileSystemLoader(get_path(dir))
 
 
 class BaseTemplates():
@@ -23,18 +29,17 @@ class Templates(BaseTemplates):
 
         global_context = global_context if global_context else {}
 
-        template_dirs = get_vdirs(template_dirs)
-        root_template_dirs = template_dirs.pop('', None)
+        if not isinstance(template_dirs, (list, tuple)):
+            template_dirs = [template_dirs]
 
-        loader = None
-        if template_dirs:
-            loader = jinja2.PrefixLoader({
-                prefix: get_jinja_template_loader(dirs)
-                for prefix, dirs in template_dirs.items() if dirs
-            })
+        loaders = []
+        for template_dir in template_dirs:
+            if isinstance(template_dir, dict):
+                loaders.append(get_jinja_prefix_loader(template_dir))
+            else:
+                loaders.append(get_jinja_path_loader(template_dir))
 
-        if root_template_dirs:
-            loader = get_jinja_template_loader(root_template_dirs, [loader] if loader else None)
+        loader = jinja2.ChoiceLoader(loaders) if len(loaders) > 1 else loaders[0]
 
         self.env = jinja2.Environment(autoescape=True, loader=loader)
         for key, value in global_context.items():

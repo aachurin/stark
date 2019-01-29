@@ -29,21 +29,24 @@ class App():
                  components=None,
                  event_hooks=None):
 
-        template_dirs = template_dirs or ()
-        if isinstance(template_dirs, list):
-            template_dirs = tuple(template_dirs)
+        template_dirs = template_dirs or []
+        if isinstance(template_dirs, tuple):
+            template_dirs = list(template_dirs)
         if isinstance(template_dirs, str):
-            template_dirs = (template_dirs,)
+            template_dirs = [template_dirs]
 
-        static_dirs = static_dirs or ()
-        if isinstance(static_dirs, list):
-            static_dirs = tuple(static_dirs)
+        static_dirs = static_dirs or []
+        if isinstance(static_dirs, tuple):
+            static_dirs = list(static_dirs)
         if isinstance(static_dirs, str):
-            static_dirs = (static_dirs,)
+            static_dirs = [static_dirs]
 
         if docs_url is not None:
-            template_dirs += ({'apistar': 'apistar:themes/%s/templates' % docs_theme},)
-            static_dirs += ('apistar:themes/%s/static' % docs_theme,)
+            template_dirs += [
+                'stark:templates',
+                {'apistar': 'apistar:themes/%s/templates' % docs_theme}
+            ]
+            static_dirs += ['apistar:themes/%s/static' % docs_theme]
 
         if not static_dirs:
             static_url = None
@@ -52,12 +55,13 @@ class App():
         if components:
             msg = 'components must be a list of instances of Component.'
             assert all([isinstance(component, Component) for component in components]), msg
+
         if event_hooks:
             msg = 'event_hooks must be a list.'
             assert isinstance(event_hooks, (list, tuple)), msg
 
-        routes = routes + self.include_extra_routes(schema_url, docs_url, static_url)
         self.init_document(routes)
+        routes += self.include_extra_routes(schema_url, docs_url, static_url)
         self.init_router(routes)
         self.init_templates(template_dirs)
         self.init_staticfiles(static_url, static_dirs)
@@ -236,6 +240,7 @@ class App():
         except Exception as exc:
             try:
                 state['exc'] = exc
+                # noinspection PyTypeChecker
                 funcs = (
                     [self.exception_handler] +
                     on_response +
@@ -334,6 +339,7 @@ class ASyncApp(App):
             except Exception as exc:
                 try:
                     state['exc'] = exc
+                    # noinspection PyTypeChecker
                     funcs = (
                         [self.exception_handler] +
                         on_response +

@@ -5,6 +5,9 @@ from stark import exceptions
 
 
 class Component():
+
+    singleton = False
+
     def identity(self, parameter: inspect.Parameter):
         """
         Each component needs a unique identifier string that we use for lookups
@@ -42,6 +45,7 @@ class Component():
             raise exceptions.ConfigurationError(msg % self.__class__.__name__)
         return parameter.annotation is return_annotation
 
+    @typing.no_type_check
     def resolve(self):
         raise NotImplementedError()
 

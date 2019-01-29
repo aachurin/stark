@@ -2,7 +2,7 @@ from http import HTTPStatus
 
 from stark import exceptions
 from stark.compat import aiofiles, whitenoise
-from stark.utils import get_vdirs
+from stark.utils import get_path
 
 
 class BaseStaticFiles():
@@ -19,12 +19,18 @@ class StaticFiles(BaseStaticFiles):
     def __init__(self, prefix: str, static_dirs: str=None):
         self.check_requirements()
         self.whitenoise = whitenoise.WhiteNoise(application=self.not_found)
-        static_dirs = get_vdirs(static_dirs)
-        prefix = prefix.rstrip('/')
-        for dir_prefix, static_dirs in static_dirs.items():
-            dir_prefix = (prefix + '/' + dir_prefix).rstrip('/')
-            for static_dir in static_dirs:
-                self.whitenoise.add_files(static_dir, prefix=dir_prefix)
+
+        if not isinstance(static_dirs, (list, tuple)):
+            static_dirs = [static_dirs]
+
+        for static_dir in static_dirs:
+            if isinstance(static_dir, dict):
+                for files_prefix, path in static_dir.items():
+                    path = get_path(path)
+                    self.whitenoise.add_files(path, prefix=(prefix + '/' + files_prefix).rstrip('/'))
+            else:
+                path = get_path(static_dir)
+                self.whitenoise.add_files(path, prefix=prefix)
 
     def check_requirements(self):
         if whitenoise is None:
