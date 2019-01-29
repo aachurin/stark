@@ -1,4 +1,5 @@
 import sys
+import types
 import werkzeug
 
 from stark import exceptions
@@ -53,8 +54,8 @@ class App():
 
         # Guard against some easy misconfiguration.
         if components:
-            msg = 'components must be a list of instances of Component.'
-            assert all([isinstance(component, Component) for component in components]), msg
+            msg = 'components must be a list of instances of Component or functions.'
+            assert all([isinstance(component, (Component, types.FunctionType)) for component in components]), msg
 
         if event_hooks:
             msg = 'event_hooks must be a list.'

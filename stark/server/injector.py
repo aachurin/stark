@@ -1,8 +1,9 @@
 import asyncio
 import inspect
+import types
 
 from stark.exceptions import ConfigurationError
-from stark.server.components import ReturnValue
+from stark.server.components import ReturnValue, Component
 
 
 class BaseInjector():
@@ -15,12 +16,21 @@ class Injector(BaseInjector):
 
     def __init__(self, components, initial):
         self.instances = {}
-        self.components = components
+        self.components = [self.ensure_component(comp) for comp in components]
         self.initial = dict(initial)
         self.reverse_initial = {
             val: key for key, val in initial.items()
         }
         self.resolver_cache = {}
+
+    @staticmethod
+    def ensure_component(comp):
+        if isinstance(comp, types.FunctionType):
+            func = comp
+            comp = Component()
+            comp.resolve = func
+        assert isinstance(comp, Component), "Must be an instance of Component, got %s" % type(comp)
+        return comp
 
     def resolve_function(self,
                          func,
@@ -57,7 +67,7 @@ class Injector(BaseInjector):
                 kwargs[parameter.name] = initial_kwarg
                 continue
 
-            # Check if the parameter class in 'singletons'
+            # Check if the parameter class exists in 'instances'.
             if parameter.annotation in self.instances:
                 instance = self.instances[parameter.annotation]
                 consts[parameter.name] = instance
@@ -68,7 +78,8 @@ class Injector(BaseInjector):
             # parameter name in order to lookup a particular value.
             if parameter.annotation is inspect.Parameter:
                 if singleton:
-                    msg = 'Singleton component "%s" cannot depend on inspect.Parameter'
+                    msg = ('Component "%s" cannot depend on inspect.Parameter, '
+                           'since it is singleton.')
                     raise ConfigurationError(msg % self.__class__.__name__)
                 consts[parameter.name] = parent_parameter
                 continue
@@ -85,7 +96,7 @@ class Injector(BaseInjector):
                             output_name=identity,
                             seen_state=seen_state,
                             parent_parameter=parameter,
-                            singleton=component.is_singleton()
+                            singleton=component.singleton
                         )
                         steps += resolved_steps
                         cache_steps = cache_steps and can_cache
@@ -105,7 +116,7 @@ class Injector(BaseInjector):
 
             def func(**kw):
                 ret = orig_func(**kw)
-                self.instances[output_name] = ret
+                self.instances[parent_parameter.annotation] = ret
                 return ret
 
         step = (func, is_async, kwargs, consts, output_name, set_return)

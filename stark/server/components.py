@@ -4,9 +4,17 @@ import typing
 from stark import exceptions
 
 
-class Component():
+class Component:
 
     singleton = False
+
+    def __init_subclass__(cls, **kwargs):
+        if cls.singleton and cls.can_handle_parameter is not Component.can_handle_parameter:
+            msg = (
+                'Component "%s" should not override `can_handle_parameter`, '
+                'since it is a singleton'
+            )
+            raise exceptions.ConfigurationError(msg % cls.__name__)
 
     def identity(self, parameter: inspect.Parameter):
         """
@@ -38,11 +46,16 @@ class Component():
         # Eg. Include the `Request` instance for any parameter named `request`.
         return_annotation = inspect.signature(self.resolve).return_annotation
         if return_annotation is inspect.Signature.empty:
-            msg = (
-                'Component "%s" must include a return annotation on the '
-                '`resolve()` method, or override `can_handle_parameter`'
-            )
-            raise exceptions.ConfigurationError(msg % self.__class__.__name__)
+            if self.__class__ is Component:
+                msg = (
+                    'Component "%s" must include a return annotation.'
+                ) % self.resolve.__name__
+            else:
+                msg = (
+                    'Component "%s" must include a return annotation on the '
+                    '`resolve()` method, or override `can_handle_parameter`.'
+                ) % self.__class__.__name__
+            raise exceptions.ConfigurationError(msg)
         return parameter.annotation is return_annotation
 
     @typing.no_type_check
