@@ -4,8 +4,8 @@ import typing
 
 from stark import http
 
-from apistar import types, validators
-from apistar.document import Document, Field, Link, Response, Section
+from stark import types, validators
+from stark.document import Document, Field, Link, Response, Section
 
 
 class Route():

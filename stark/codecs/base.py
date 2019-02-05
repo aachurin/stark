@@ -7,4 +7,3 @@ class BaseCodec:
 
     def encode(self, item, **options):
         raise NotImplementedError()
-

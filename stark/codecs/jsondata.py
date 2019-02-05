@@ -1,10 +1,8 @@
-import types
-import typing
 import json
 import collections
 
 from stark.codecs.base import BaseCodec
-from stark.exceptions import ParseError
+from stark.exceptions import ParseError, ErrorMessage
 
 
 class JSONCodec(BaseCodec):
@@ -18,7 +16,10 @@ class JSONCodec(BaseCodec):
                 object_pairs_hook=collections.OrderedDict
             )
         except ValueError as exc:
-            raise ParseError('Malformed JSON. %s' % exc) from None
+            message = ErrorMessage(text='Malformed JSON. %s' % exc,
+                                   index=['body'],
+                                   code='parse_failed')
+            raise ParseError(messages=[message]) from None
 
     def encode(self, item, **options):
         return json.dumps(item, **options).encode('utf-8')

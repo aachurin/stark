@@ -56,7 +56,7 @@ version = get_version('stark')
 setup(
     name='stark',
     version=version,
-    url='http://www.encode.io/apistar/',
+    url='https://github.com/aachurin/stark',
     license='BSD',
     description='Blazingly fast & beautifully expressive Web APIs',
     long_description=get_long_description('README.md'),
@@ -68,8 +68,6 @@ setup(
     packages=get_packages('stark'),
     package_data=get_package_data('stark'),
     install_requires=[
-        'apistar',
-        'click',
         'jinja2',
         'werkzeug',
         'whitenoise'
@@ -88,9 +86,9 @@ setup(
         'Programming Language :: Python :: Implementation :: PyPy',
         'Programming Language :: Python :: Implementation :: CPython'
     ],
-    entry_points={
-        'console_scripts': [
-            'stark=stark:main'
-        ],
-    },
+    # entry_points={
+    #     'console_scripts': [
+    #         'stark=stark:main'
+    #     ],
+    # },
 )

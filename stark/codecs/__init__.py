@@ -1,5 +1,4 @@
 from stark.codecs.base import BaseCodec
-from stark.codecs.documentbase import DocumentBaseCodec
 from stark.codecs.jsondata import JSONCodec
 from stark.codecs.jsonschema import JSONSchemaCodec
 from stark.codecs.multipart import MultiPartCodec
@@ -9,6 +8,6 @@ from stark.codecs.text import TextCodec
 from stark.codecs.urlencoded import URLEncodedCodec
 
 __all__ = [
-    'BaseCodec', 'DocumentBaseCodec', 'JSONCodec', 'JSONSchemaCodec', 'OpenAPICodec',
+    'BaseCodec', 'JSONCodec', 'JSONSchemaCodec', 'OpenAPICodec',
     'SwaggerCodec', 'TextCodec', 'MultiPartCodec', 'URLEncodedCodec',
 ]

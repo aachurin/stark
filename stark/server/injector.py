@@ -1,6 +1,5 @@
 import asyncio
 import inspect
-import types
 
 from stark.exceptions import ConfigurationError
 from stark.server.components import ReturnValue, Component
@@ -25,11 +24,20 @@ class Injector(BaseInjector):
 
     @staticmethod
     def ensure_component(comp):
-        if isinstance(comp, types.FunctionType):
-            func = comp
+        if callable(comp):
+            f = comp
             comp = Component()
-            comp.resolve = func
-        assert isinstance(comp, Component), "Must be an instance of Component, got %s" % type(comp)
+            comp.resolve = f
+        else:
+            msg = 'Component "%s" must implement `identity` method.'
+            assert hasattr(comp, 'identity') and callable(comp.identity),\
+                msg % comp.__class__.__name__
+            msg = 'Component "%s" must implement `can_handle_parameter` method.'
+            assert hasattr(comp, 'can_handle_parameter') and callable(comp.can_handle_parameter),\
+                msg % comp.__class__.__name__
+            msg = 'Component "%s" must implement `resolve` method.'
+            assert hasattr(comp, 'resolve') and callable(comp.resolve),\
+                msg % comp.__class__.__name__
         return comp
 
     def resolve_function(self,
@@ -91,12 +99,13 @@ class Injector(BaseInjector):
                     kwargs[parameter.name] = identity
                     if identity not in seen_state:
                         seen_state.add(identity)
+                        singleton_component = getattr(component, 'singleton', False)
                         resolved_steps, can_cache = self.resolve_function(
                             func=component.resolve,
                             output_name=identity,
                             seen_state=seen_state,
                             parent_parameter=parameter,
-                            singleton=component.singleton
+                            singleton=singleton_component
                         )
                         steps += resolved_steps
                         cache_steps = cache_steps and can_cache
@@ -134,7 +143,7 @@ class Injector(BaseInjector):
             cache_steps_result = cache_steps_result and cache_steps
         return steps, cache_steps_result
 
-    def run(self, funcs, state):
+    def run(self, funcs, state, cache=True):
         funcs = tuple(funcs)
         try:
             steps = self.resolver_cache[funcs]
@@ -142,7 +151,7 @@ class Injector(BaseInjector):
             if not funcs:
                 return
             steps, cache_steps = self.resolve_functions(funcs, state)
-            if cache_steps:
+            if cache_steps and cache:
                 self.resolver_cache[funcs] = steps
 
         output_name = None

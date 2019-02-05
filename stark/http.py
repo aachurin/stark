@@ -1,7 +1,7 @@
 import json
 import typing
 from urllib.parse import urlparse
-from apistar import types
+from stark import types
 from stark import codecs
 from stark import exceptions
 

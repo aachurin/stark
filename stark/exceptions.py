@@ -1,56 +1,65 @@
 from typing import Union
+from collections import namedtuple
 
 
-class ErrorMessage():
-    def __init__(self, message, marker):
-        self.message = message
-        self.marker = marker
+Position = namedtuple('Position', ['line_no', 'column_no', 'index'])
 
-    def __repr__(self):
-        return '%s(%s, position=%d)' % (
-            self.__class__.__name__,
-            repr(self.message),
-            self.marker.position
-        )
+
+class ErrorMessage:
+
+    def __init__(self, text, code, index=None, position=None):
+        self.text = text
+        self.code = code
+        self.index = index
+        self.position = position
 
     def __eq__(self, other):
-        return self.message == other.message and self.marker == other.marker
+        return (
+            self.text == other.text and
+            self.code == other.code and
+            self.index == other.index and
+            self.position == other.position
+        )
+
+    def __repr__(self):
+        return "%s(%s, code=%s, index=%s, position=%s)" % (
+            self.__class__.__name__,
+            repr(self.text),
+            repr(self.code),
+            repr(self.index),
+            repr(self.position)
+        )
 
 
-class ParseError(Exception):
-    """
-    Raised by a Codec when `decode` fails due to malformed syntax.
-    """
-    def __init__(self, message, marker=None, base_format=None):
-        Exception.__init__(self, message)
-        self.message = message
-        self.marker = marker
-        self.base_format = base_format
+class DecodeError(Exception):
 
-    def get_error_messages(self):
-        assert self.marker is not None, 'No marker set.'
-        return [ErrorMessage(self.message, self.marker)]
+    def __init__(self, messages, summary=None):
+        self.messages = messages
+        self.summary = summary
+        super().__init__(messages)
+
+
+class ValidationError(DecodeError):
+    def as_dict(self):
+        ret = {}
+        for message in self.messages:
+            lookup = ret
+            if message.index:
+                for key in message.index[:-1]:
+                    lookup.setdefault(key, {})
+                    lookup = lookup[key]
+            key = message.index[-1] if message.index else None
+            lookup[key] = message.text
+        return ret
+
+
+class ParseError(ValidationError):
+    pass
 
 
 class NoReverseMatch(Exception):
     """
     Raised by a Router when `reverse_url` is passed an invalid handler name.
-    """
-    pass
-
-
-class ErrorResponse(Exception):
-    """
-    Raised when a client request results in an error response being returned.
-    """
-    def __init__(self, title, content):
-        self.title = title
-        self.content = content
-
-
-class RequestError(Exception):
-    """
-    Raised when some invalid parameter is used in a client request.
     """
     pass
 
@@ -70,8 +79,8 @@ class HTTPException(Exception):
     default_detail = None  # type: str
 
     def __init__(self,
-                 detail: Union[str, dict]=None,
-                 status_code: int=None) -> None:
+                 detail: Union[str, dict] = None,
+                 status_code: int = None) -> None:
         self.detail = self.default_detail if (detail is None) else detail
         self.status_code = self.default_status_code if (status_code is None) else status_code
         assert self.detail is not None, '"detail" is required.'
@@ -87,8 +96,8 @@ class Found(HTTPException):
 
     def __init__(self,
                  location: str,
-                 detail: Union[str, dict]=None,
-                 status_code: int=None) -> None:
+                 detail: Union[str, dict] = None,
+                 status_code: int = None) -> None:
         self.location = location
         super().__init__(detail, status_code)
 

@@ -1,12 +1,11 @@
 import sys
-import types
 import werkzeug
 
 from stark import exceptions
 from stark.http import HTMLResponse, JSONResponse, PathParams, Response
 from stark.server.adapters import ASGItoWSGIAdapter
 from stark.server.asgi import ASGI_COMPONENTS, ASGIReceive, ASGIScope, ASGISend
-from stark.server.components import Component, ReturnValue
+from stark.server.components import ReturnValue
 from stark.server.core import Route, generate_document
 from stark.server.injector import ASyncInjector, Injector
 from stark.server.router import Router
@@ -45,28 +44,23 @@ class App():
         if docs_url is not None:
             template_dirs += [
                 'stark:templates',
-                {'apistar': 'apistar:themes/%s/templates' % docs_theme}
+                {'apistar': 'stark:themes/%s/templates' % docs_theme}
             ]
-            static_dirs += ['apistar:themes/%s/static' % docs_theme]
+            static_dirs += ['stark:themes/%s/static' % docs_theme]
 
         if not static_dirs:
             static_url = None
-
-        # Guard against some easy misconfiguration.
-        if components:
-            msg = 'components must be a list of instances of Component or functions.'
-            assert all([isinstance(component, (Component, types.FunctionType)) for component in components]), msg
 
         if event_hooks:
             msg = 'event_hooks must be a list.'
             assert isinstance(event_hooks, (list, tuple)), msg
 
+        self.init_injector(components)
         self.init_document(routes)
         routes += self.include_extra_routes(schema_url, docs_url, static_url)
         self.init_router(routes)
         self.init_templates(template_dirs)
         self.init_staticfiles(static_url, static_dirs)
-        self.init_injector(components)
         self.debug = False
         self.event_hooks = event_hooks
 

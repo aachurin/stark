@@ -2,7 +2,6 @@
 apistar
 click
 requests
-pyyaml
 werkzeug
 
 # Optional
@@ -13,6 +12,5 @@ whitenoise
 # Testing requirements
 codecov
 flake8
-isort
 pytest
 pytest-cov

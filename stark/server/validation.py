@@ -1,8 +1,7 @@
 import inspect
 import typing
 
-from apistar import types, validators
-
+from stark import types, validators
 from stark import codecs, exceptions, http
 from stark.conneg import negotiate_content_type
 from stark.server.components import Component
@@ -40,8 +39,8 @@ class RequestDataComponent(Component):
 
         try:
             return codec.decode(content, headers=headers)
-        except exceptions.ParseError as exc:
-            raise exceptions.BadRequest(str(exc))
+        except exceptions.ValidationError as exc:
+            raise exceptions.BadRequest(exc.as_dict())
 
 
 class ValidatePathParamsComponent(Component):
