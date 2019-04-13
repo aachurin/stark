@@ -1,9 +1,7 @@
 import json
 import typing
 from urllib.parse import urlparse
-from stark import types
-from stark import codecs
-from stark import exceptions
+from stark import codecs, exceptions, schemas
 
 
 Method = typing.NewType('Method', str)
@@ -25,7 +23,6 @@ class URL(str):
     A string that also supports accessing the parsed URL components.
     eg. `url.components.query`
     """
-
     @property
     def components(self):
         if not hasattr(self, '_components'):
@@ -42,7 +39,6 @@ class QueryParams(typing.Mapping[str, str]):
     """
     An immutable multidict.
     """
-
     def __init__(self, value: typing.Union[StrMapping, StrPairs] = None) -> None:
         if value is None:
             value = []
@@ -242,19 +238,17 @@ class JSONResponse(Response):
 
     @staticmethod
     def default(obj: typing.Any) -> typing.Any:
-        if isinstance(obj, types.Type):
+        if isinstance(obj, schemas.SchemaBase):
             return dict(obj)
         error = "Object of type '%s' is not JSON serializable."
         raise TypeError(error % type(obj).__name__)
 
 
 class EncodedResponse(Response):
-
     encoders = {
         codecs.JSONSchemaCodec.media_type: codecs.JSONSchemaCodec,
         codecs.JSONCodec.media_type: codecs.JSONCodec,
-        codecs.OpenAPICodec.media_type: codecs.OpenAPICodec,
-        codecs.SwaggerCodec.media_type: codecs.SwaggerCodec
+        codecs.OpenAPICodec.media_type: codecs.OpenAPICodec
     }
 
     def __init__(self, content: typing.Any, media_type: str, **kwargs) -> None:

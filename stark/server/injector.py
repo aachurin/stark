@@ -1,11 +1,10 @@
 import asyncio
 import inspect
+from stark import exceptions
+from stark.server.components import ReturnValue
 
-from stark.exceptions import ConfigurationError
-from stark.server.components import ReturnValue, Component
 
-
-class BaseInjector():
+class BaseInjector:
     def run(self, func, state):
         raise NotImplementedError()
 
@@ -14,43 +13,34 @@ class Injector(BaseInjector):
     allow_async = False
 
     def __init__(self, components, initial):
-        self.instances = {}
         self.components = [self.ensure_component(comp) for comp in components]
         self.initial = dict(initial)
         self.reverse_initial = {
             val: key for key, val in initial.items()
         }
+        self.singletons = {}
         self.resolver_cache = {}
 
     @staticmethod
     def ensure_component(comp):
-        if callable(comp):
-            f = comp
-            comp = Component()
-            comp.resolve = f
-        else:
-            msg = 'Component "%s" must implement `identity` method.'
-            assert hasattr(comp, 'identity') and callable(comp.identity),\
-                msg % comp.__class__.__name__
-            msg = 'Component "%s" must implement `can_handle_parameter` method.'
-            assert hasattr(comp, 'can_handle_parameter') and callable(comp.can_handle_parameter),\
-                msg % comp.__class__.__name__
-            msg = 'Component "%s" must implement `resolve` method.'
-            assert hasattr(comp, 'resolve') and callable(comp.resolve),\
-                msg % comp.__class__.__name__
+        msg = 'Component "%s" must implement `identity` method.'
+        assert hasattr(comp, 'identity') and callable(comp.identity),\
+            msg % comp.__class__.__name__
+        msg = 'Component "%s" must implement `can_handle_parameter` method.'
+        assert hasattr(comp, 'can_handle_parameter') and callable(comp.can_handle_parameter),\
+            msg % comp.__class__.__name__
+        msg = 'Component "%s" must implement `resolve` method.'
+        assert hasattr(comp, 'resolve') and callable(comp.resolve),\
+            msg % comp.__class__.__name__
         return comp
 
     def resolve_function(self,
                          func,
+                         seen_state,
                          output_name=None,
-                         seen_state=None,
                          parent_parameter=None,
-                         set_return=False,
-                         singleton=False):
-        if seen_state is None:
-            seen_state = set(self.initial)
+                         set_return=False):
 
-        cache_steps = True
         steps = []
         kwargs = {}
         consts = {}
@@ -75,86 +65,73 @@ class Injector(BaseInjector):
                 kwargs[parameter.name] = initial_kwarg
                 continue
 
-            # Check if the parameter class exists in 'instances'.
-            if parameter.annotation in self.instances:
-                instance = self.instances[parameter.annotation]
-                consts[parameter.name] = instance
-                continue
-
             # The 'Parameter' annotation can be used to get the parameter
             # itself. Used for example in 'Header' components that need the
             # parameter name in order to lookup a particular value.
             if parameter.annotation is inspect.Parameter:
-                if singleton:
-                    msg = ('Component "%s" cannot depend on inspect.Parameter, '
-                           'since it is singleton.')
-                    raise ConfigurationError(msg % self.__class__.__name__)
                 consts[parameter.name] = parent_parameter
                 continue
 
             # Otherwise, find a component to resolve the parameter.
             for component in self.components:
                 if component.can_handle_parameter(parameter):
-                    identity = component.identity(parameter)
-                    kwargs[parameter.name] = identity
-                    if identity not in seen_state:
-                        seen_state.add(identity)
-                        singleton_component = getattr(component, 'singleton', False)
-                        resolved_steps, can_cache = self.resolve_function(
-                            func=component.resolve,
-                            output_name=identity,
-                            seen_state=seen_state,
-                            parent_parameter=parameter,
-                            singleton=singleton_component
-                        )
-                        steps += resolved_steps
-                        cache_steps = cache_steps and can_cache
+                    if component in self.singletons:
+                        consts[parameter.name] = self.singletons[component]
+                    else:
+                        identity = component.identity(parameter)
+                        kwargs[parameter.name] = identity
+                        if identity not in seen_state:
+                            seen_state.add(identity)
+                            resolved_steps = self.resolve_function(
+                                component.resolve,
+                                seen_state,
+                                output_name=identity,
+                                parent_parameter=parameter
+                            )
+                            steps += resolved_steps
+                            if getattr(component, 'singleton', False):
+                                steps.append(self.resolve_singleton(component, identity))
                     break
             else:
                 msg = 'No component able to handle parameter "%s" on function "%s".'
-                raise ConfigurationError(msg % (parameter.name, func.__name__))
+                raise exceptions.ConfigurationError(msg % (parameter.name, func.__qualname__))
 
         is_async = asyncio.iscoroutinefunction(func)
         if is_async and not self.allow_async:
             msg = 'Function "%s" may not be async.'
-            raise ConfigurationError(msg % (func.__name__, ))
-
-        if singleton:
-            orig_func = func
-            cache_steps = False
-
-            def func(**kw):
-                ret = orig_func(**kw)
-                self.instances[parent_parameter.annotation] = ret
-                return ret
+            raise exceptions.ConfigurationError(msg % (func.__qualname__, ))
 
         step = (func, is_async, kwargs, consts, output_name, set_return)
         steps.append(step)
 
-        return steps, cache_steps
+        return steps
+
+    def resolve_singleton(self, component, identity):
+        kwargs = {'value': identity}
+
+        def func(value):
+            self.singletons[component] = value
+
+        return func, False, kwargs, (), '$nocache', False
 
     def resolve_functions(self, funcs, state):
         steps = []
         seen_state = set(self.initial) | set(state)
-        cache_steps_result = True
         for func in funcs:
-            func_steps, cache_steps = self.resolve_function(func, seen_state=seen_state, set_return=True)
+            func_steps = self.resolve_function(func, seen_state, set_return=True)
             steps.extend(func_steps)
-            cache_steps_result = cache_steps_result and cache_steps
-        return steps, cache_steps_result
+        return steps
 
     def run(self, funcs, state, cache=True):
+        if not funcs:
+            return
         funcs = tuple(funcs)
         try:
             steps = self.resolver_cache[funcs]
         except KeyError:
-            if not funcs:
-                return
-            steps, cache_steps = self.resolve_functions(funcs, state)
-            if cache_steps and cache:
+            steps = self.resolve_functions(funcs, state)
+            if cache:
                 self.resolver_cache[funcs] = steps
-
-        output_name = None
 
         for func, is_async, kwargs, consts, output_name, set_return in steps:
             func_kwargs = {key: state[val] for key, val in kwargs.items()}
@@ -163,24 +140,26 @@ class Injector(BaseInjector):
             if set_return:
                 state['return_value'] = state[output_name]
 
+        if '$nocache' in state:
+            self.resolver_cache.pop(funcs)
+
+        # noinspection PyUnboundLocalVariable
         return state[output_name]
 
 
 class ASyncInjector(Injector):
     allow_async = True
 
-    async def run_async(self, funcs, state):
+    async def run_async(self, funcs, state, cache=True):
+        if not funcs:
+            return
         funcs = tuple(funcs)
         try:
             steps = self.resolver_cache[funcs]
         except KeyError:
-            if not funcs:
-                return
-            steps, cache_steps = self.resolve_functions(funcs, state)
-            if cache_steps:
+            steps = self.resolve_functions(funcs, state)
+            if cache:
                 self.resolver_cache[funcs] = steps
-
-        output_name = None
 
         for func, is_async, kwargs, consts, output_name, set_return in steps:
             func_kwargs = {key: state[val] for key, val in kwargs.items()}
@@ -192,4 +171,8 @@ class ASyncInjector(Injector):
             if set_return:
                 state['return_value'] = state[output_name]
 
+        if cache and '$nocache' in state:
+            self.resolver_cache.pop(funcs)
+
+        # noinspection PyUnboundLocalVariable
         return state[output_name]

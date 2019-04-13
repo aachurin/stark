@@ -1,5 +1,5 @@
 # Core requirements
-apistar
+typesystem
 click
 requests
 werkzeug

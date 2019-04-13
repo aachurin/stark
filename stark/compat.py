@@ -42,9 +42,11 @@ try:
 except ImportError:
     pygments = None
 
+    # noinspection PyUnusedLocal
     def pygments_highlight(text, lang, style):
         return text
 
+    # noinspection PyUnusedLocal
     def pygments_css(style):
         return None
 

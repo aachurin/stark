@@ -33,14 +33,14 @@ class ASGItoWSGIAdapter(object):
             elif msg['type'] == 'http.response.body':
                 return_bytes.append(msg.get('body', b''))
 
-        async def recieve():
+        async def receive():
             return {
                 'type': 'http.request',
                 'body': environ['wsgi.input'].read()
             }
 
         try:
-            self.loop.run_until_complete(asgi_coroutine(recieve, send))
+            self.loop.run_until_complete(asgi_coroutine(receive, send))
         except Exception:
             if self.raise_exceptions:
                 raise

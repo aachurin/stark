@@ -1,9 +1,7 @@
 import collections
 import re
 import typing
-
-from stark.validators import Validator
-
+from stark import schemas
 
 LinkInfo = collections.namedtuple('LinkInfo', ['link', 'name', 'sections'])
 
@@ -102,6 +100,7 @@ class Link:
     """
     Links represent the actions that a client may perform.
     """
+
     def __init__(self,
                  url: str,
                  method: str,
@@ -112,26 +111,27 @@ class Link:
                  title: str = '',
                  description: str = '',
                  fields: typing.Sequence['Field'] = None):
-        method = method.upper()
-        fields = [] if (fields is None) else list(fields)
 
+        method = method.upper()
+        fields = fields or []
         url_path_names = set([
             item.strip('{}').lstrip('+') for item in re.findall('{[^}]*}', url)
         ])
-        path_fields = [
-            field for field in fields if field.location == 'path'
-        ]
-        body_fields = [
-            field for field in fields if field.location == 'body'
-        ]
 
         assert method in (
             'GET', 'POST', 'PUT', 'PATCH',
             'DELETE', 'OPTIONS', 'HEAD', 'TRACE'
         )
+
+        path_fields = [field for field in fields if field.location == 'path']
+        query_fields = [field for field in fields if field.location == 'query']
+        body_fields = [field for field in fields if field.location == 'body']
+
         assert len(body_fields) < 2
+
         if body_fields:
             assert encoding
+
         for field in path_fields:
             assert field.name in url_path_names
 
@@ -139,7 +139,7 @@ class Link:
         # a corresponding path field.
         for path_name in url_path_names:
             if path_name not in [field.name for field in path_fields]:
-                fields += [Field(name=path_name, location='path', required=True)]
+                path_fields += [Field(name=path_name, location='path', required=True)]
 
         self.url = url
         self.method = method
@@ -149,25 +149,9 @@ class Link:
         self.response = response
         self.title = title
         self.description = description
-        self.fields = fields
-
-    def get_path_fields(self):
-        return [field for field in self.fields if field.location == 'path']
-
-    def get_query_fields(self):
-        return [field for field in self.fields if field.location == 'query']
-
-    def get_body_field(self):
-        for field in self.fields:
-            if field.location == 'body':
-                return field
-        return None
-
-    def get_expanded_body(self):
-        field = self.get_body_field()
-        if field is None or not hasattr(field.schema, 'properties'):
-            return None
-        return field.schema.properties
+        self.path_fields = path_fields
+        self.query_fields = query_fields
+        self.body_field = body_fields[0] if body_fields else None
 
 
 class Field:
@@ -177,7 +161,7 @@ class Field:
                  title: str = '',
                  description: str = '',
                  required: bool = None,
-                 schema: Validator = None,
+                 schema: typing.Union[schemas.Field, typing.Type[schemas.SchemaBase]] = None,
                  example: typing.Any = None):
         assert location in ('path', 'query', 'body', 'cookie', 'header', 'formData')
         if required is None:
@@ -195,7 +179,7 @@ class Field:
 
 
 class Response:
-    def __init__(self, encoding: str, status_code: int = 200, schema: Validator=None):
+    def __init__(self, encoding: str, status_code: int = 200, schema: schemas.Field = None):
         self.encoding = encoding
         self.status_code = status_code
         self.schema = schema

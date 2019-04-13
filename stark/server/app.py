@@ -1,6 +1,5 @@
 import sys
 import werkzeug
-
 from stark import exceptions
 from stark.http import HTMLResponse, JSONResponse, PathParams, Response
 from stark.server.adapters import ASGItoWSGIAdapter
@@ -22,7 +21,7 @@ class App():
                  routes,
                  template_dirs=None,
                  static_dirs=None,
-                 schema_url='/schema/',
+                 schema_url='/schema',
                  docs_url='/docs/',
                  docs_theme='apistar',
                  static_url='/static/',
@@ -226,10 +225,10 @@ class App():
                 funcs = [route.handler]
             else:
                 funcs = (
-                    on_request +
-                    [route.handler, self.render_response] +
-                    on_response +
-                    [self.finalize_wsgi]
+                        on_request +
+                        [route.handler, self.render_response] +
+                        on_response +
+                        [self.finalize_wsgi]
                 )
             return self.injector.run(funcs, state)
         except Exception as exc:
@@ -237,9 +236,9 @@ class App():
                 state['exc'] = exc
                 # noinspection PyTypeChecker
                 funcs = (
-                    [self.exception_handler] +
-                    on_response +
-                    [self.finalize_wsgi]
+                        [self.exception_handler] +
+                        on_response +
+                        [self.finalize_wsgi]
                 )
                 return self.injector.run(funcs, state)
             except Exception as inner_exc:
@@ -325,10 +324,10 @@ class ASyncApp(App):
                     funcs = [route.handler]
                 else:
                     funcs = (
-                        on_request +
-                        [route.handler, self.render_response] +
-                        on_response +
-                        [self.finalize_asgi]
+                            on_request +
+                            [route.handler, self.render_response] +
+                            on_response +
+                            [self.finalize_asgi]
                     )
                 await self.injector.run_async(funcs, state)
             except Exception as exc:
@@ -336,9 +335,9 @@ class ASyncApp(App):
                     state['exc'] = exc
                     # noinspection PyTypeChecker
                     funcs = (
-                        [self.exception_handler] +
-                        on_response +
-                        [self.finalize_asgi]
+                            [self.exception_handler] +
+                            on_response +
+                            [self.finalize_asgi]
                     )
                     await self.injector.run_async(funcs, state)
                 except Exception as inner_exc:
@@ -348,6 +347,7 @@ class ASyncApp(App):
                     finally:
                         funcs = [self.error_handler, self.finalize_asgi]
                         await self.injector.run_async(funcs, state)
+
         return asgi_callable
 
     async def finalize_asgi(self, response: Response, send: ASGISend, scope: ASGIScope):

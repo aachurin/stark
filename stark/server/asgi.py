@@ -1,7 +1,6 @@
 import typing
 from inspect import Parameter
 from urllib.parse import parse_qsl
-
 from stark import http
 from stark.server.components import Component
 
@@ -77,9 +76,8 @@ class QueryParamComponent(Component):
                 parameter: Parameter,
                 query_params: http.QueryParams) -> http.QueryParam:
         name = parameter.name
-        if name not in query_params:
-            return None
-        return http.QueryParam(query_params[name])
+        if name in query_params:
+            return http.QueryParam(query_params[name])
 
 
 class HeadersComponent(Component):
@@ -96,9 +94,8 @@ class HeaderComponent(Component):
                 parameter: Parameter,
                 headers: http.Headers) -> http.Header:
         name = parameter.name.replace('_', '-')
-        if name not in headers:
-            return None
-        return http.Header(headers[name])
+        if name in headers:
+            return http.Header(headers[name])
 
 
 class BodyComponent(Component):

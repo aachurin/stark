@@ -3,11 +3,10 @@ from http import HTTPStatus
 from inspect import Parameter
 from urllib.parse import parse_qsl
 from wsgiref.util import request_uri
-
 from werkzeug.wsgi import get_input_stream
-
 from stark import http
 from stark.server.components import Component
+
 
 WSGIEnviron = typing.NewType('WSGIEnviron', dict)
 WSGIStartResponse = typing.NewType('WSGIStartResponse', typing.Callable)
@@ -16,6 +15,7 @@ WSGIStartResponse = typing.NewType('WSGIStartResponse', typing.Callable)
 RESPONSE_STATUS_TEXT = {
     code: str(code) for code in range(100, 600)
 }
+
 RESPONSE_STATUS_TEXT.update({
     status.value: "%d %s" % (status.value, status.phrase)
     for status in HTTPStatus
@@ -78,9 +78,8 @@ class QueryParamComponent(Component):
                 parameter: Parameter,
                 query_params: http.QueryParams) -> http.QueryParam:
         name = parameter.name
-        if name not in query_params:
-            return None
-        return http.QueryParam(query_params[name])
+        if name in query_params:
+            return http.QueryParam(query_params[name])
 
 
 class HeadersComponent(Component):
@@ -102,9 +101,8 @@ class HeaderComponent(Component):
                 parameter: Parameter,
                 headers: http.Headers) -> http.Header:
         name = parameter.name.replace('_', '-')
-        if name not in headers:
-            return None
-        return http.Header(headers[name])
+        if name in headers:
+            return http.Header(headers[name])
 
 
 class BodyComponent(Component):

@@ -9,14 +9,15 @@ from stark.codecs.base import BaseCodec
 
 
 class MultiPartCodec(BaseCodec):
-
     media_type = 'multipart/form-data'
 
-    def decode(self, bytestring, headers, **options):
-        try:
-            content_length = max(0, int(headers['content-length']))
-        except (KeyError, ValueError, TypeError):
-            content_length = None
+    def decode(self, bytestring, headers=None, **options):
+        content_length = None
+        if headers is not None:
+            try:
+                content_length = max(0, int(headers['content-length']))
+            except (KeyError, ValueError, TypeError):
+                content_length = None
 
         try:
             mime_type, mime_options = parse_options_header(headers['content-type'])

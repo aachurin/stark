@@ -15,8 +15,7 @@ class StaticFiles(BaseStaticFiles):
     """
     Static file handling for WSGI applications, using `whitenoise`.
     """
-
-    def __init__(self, prefix: str, static_dirs: str=None):
+    def __init__(self, prefix: str, static_dirs: str = None):
         self.check_requirements()
         self.whitenoise = whitenoise.WhiteNoise(application=self.not_found)
 
@@ -60,6 +59,7 @@ class ASyncStaticFiles(StaticFiles):
         else:
             static_file = self.whitenoise.files.get(path)
         if static_file is None:
+            # noinspection PyUnusedLocal
             async def not_found(receive, send):
                 raise exceptions.NotFound()
             return not_found

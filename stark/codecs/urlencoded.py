@@ -1,6 +1,5 @@
 from werkzeug.datastructures import ImmutableMultiDict
 from werkzeug.urls import url_decode
-
 from stark.codecs.base import BaseCodec
 
 

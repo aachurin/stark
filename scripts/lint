@@ -1,0 +1,6 @@
+#!/bin/sh -e
+
+set -x
+
+${PREFIX}black stark tests setup.py
+${PREFIX}isort --multi-line=3 --trailing-comma --force-grid-wrap=0 --combine-as --line-width 88 --recursive --apply stark tests setup.py

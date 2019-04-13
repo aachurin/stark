@@ -1,10 +1,8 @@
 import inspect
 import re
 from urllib.parse import urlparse
-
 import werkzeug
 from werkzeug.routing import Map, Rule
-
 from stark import exceptions
 from stark.compat import dict_type
 from stark.server.core import Include, Route

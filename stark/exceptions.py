@@ -1,60 +1,10 @@
 from typing import Union
-from collections import namedtuple
+from typesystem import Message, ValidationError, ParseError
 
 
-Position = namedtuple('Position', ['line_no', 'column_no', 'index'])
-
-
-class ErrorMessage:
-
-    def __init__(self, text, code, index=None, position=None):
-        self.text = text
-        self.code = code
-        self.index = index
-        self.position = position
-
-    def __eq__(self, other):
-        return (
-            self.text == other.text and
-            self.code == other.code and
-            self.index == other.index and
-            self.position == other.position
-        )
-
-    def __repr__(self):
-        return "%s(%s, code=%s, index=%s, position=%s)" % (
-            self.__class__.__name__,
-            repr(self.text),
-            repr(self.code),
-            repr(self.index),
-            repr(self.position)
-        )
-
-
-class DecodeError(Exception):
-
-    def __init__(self, messages, summary=None):
-        self.messages = messages
-        self.summary = summary
-        super().__init__(messages)
-
-
-class ValidationError(DecodeError):
-    def as_dict(self):
-        ret = {}
-        for message in self.messages:
-            lookup = ret
-            if message.index:
-                for key in message.index[:-1]:
-                    lookup.setdefault(key, {})
-                    lookup = lookup[key]
-            key = message.index[-1] if message.index else None
-            lookup[key] = message.text
-        return ret
-
-
-class ParseError(ValidationError):
-    pass
+__all__ = ('ValidationError', 'Message', 'ParseError', 'NoReverseMatch', 'NoCodecAvailable', 'ConfigurationError',
+           'HTTPException', 'Found', 'BadRequest', 'Forbidden', 'NotFound', 'MethodNotAllowed', 'NotAcceptable',
+           'UnsupportedMediaType')
 
 
 class NoReverseMatch(Exception):
@@ -75,8 +25,8 @@ class ConfigurationError(Exception):
 # HTTP exceptions
 
 class HTTPException(Exception):
-    default_status_code = None  # type: int
-    default_detail = None  # type: str
+    default_status_code: int = None
+    default_detail: str = None
 
     def __init__(self,
                  detail: Union[str, dict] = None,

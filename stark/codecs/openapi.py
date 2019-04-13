@@ -1,292 +1,314 @@
 import re
 import json
-import collections
 from urllib.parse import urljoin, urlparse
-from stark import validators
-from stark.codecs import BaseCodec, JSONSchemaCodec
-from stark.codecs.jsonschema import JSON_SCHEMA
+from stark import exceptions
+from stark.codecs import BaseCodec
+from stark.schemas import JSONSchema, to_json_schema, from_json_schema, SchemaDefinitions, Definitions
+from stark.schemas import String, Choice, Object, Any, Reference, Array, Boolean
 from stark.compat import dict_type
 from stark.document import Document, Field, Link, Section
-from stark.exceptions import ErrorMessage, ParseError
 
 
-SCHEMA_REF = validators.Object(
-    properties={'$ref': validators.String(pattern='^#/components/schemas/')}
-)
-REQUESTBODY_REF = validators.Object(
-    properties={'$ref': validators.String(pattern='^#/components/requestBodies/')}
-)
-RESPONSE_REF = validators.Object(
-    properties={'$ref': validators.String(pattern='^#/components/responses/')}
+SchemaRef = Object(
+    properties={'$ref': String(pattern='^#/components/schemas/')}
 )
 
-OPEN_API = validators.Object(
-    def_name='OpenAPI',
+RequestBodyRef = Object(
+    properties={'$ref': String(pattern='^#/components/requestBodies/')}
+)
+
+ResponseRef = Object(
+    properties={'$ref': String(pattern='^#/components/responses/')}
+)
+
+definitions = SchemaDefinitions()
+
+OpenAPI = Object(
     title='OpenAPI',
-    properties=[
-        ('openapi', validators.String()),
-        ('info', validators.Ref('Info')),
-        ('servers', validators.Array(items=validators.Ref('Server'))),
-        ('paths', validators.Ref('Paths')),
-        ('components', validators.Ref('Components')),
-        ('security', validators.Array(items=validators.Ref('SecurityRequirement'))),
-        ('tags', validators.Array(items=validators.Ref('Tag'))),
-        ('externalDocs', validators.Ref('ExternalDocumentation')),
-    ],
+    properties={
+        'openapi': String(),
+        'info': Reference('Info', definitions=definitions),
+        'servers': Array(items=Reference('Server', definitions=definitions)),
+        'paths': Reference('Paths', definitions=definitions),
+        'components': Reference('Components', definitions=definitions),
+        'security': Array(items=Reference('SecurityRequirement', definitions=definitions)),
+        'tags': Array(items=Reference('Tag', definitions=definitions)),
+        'externalDocs': Reference('ExternalDocumentation', definitions=definitions),
+    },
     pattern_properties={
-        '^x-': validators.Any(),
+        '^x-': Any(),
     },
     additional_properties=False,
-    required=['openapi', 'info', 'paths'],
-    definitions={
-        'Info': validators.Object(
-            properties=[
-                ('title', validators.String()),
-                ('description', validators.String(format='textarea')),
-                ('termsOfService', validators.String(format='url')),
-                ('contact', validators.Ref('Contact')),
-                ('license', validators.Ref('License')),
-                ('version', validators.String()),
-            ],
-            pattern_properties={
-                '^x-': validators.Any(),
-            },
-            additional_properties=False,
-            required=['title', 'version']
-        ),
-        'Contact': validators.Object(
-            properties=[
-                ('name', validators.String()),
-                ('url', validators.String(format='url')),
-                ('email', validators.String(format='email')),
-            ],
-            pattern_properties={
-                '^x-': validators.Any(),
-            },
-            additional_properties=False,
-        ),
-        'License': validators.Object(
-            properties=[
-                ('name', validators.String()),
-                ('url', validators.String(format='url')),
-            ],
-            required=['name'],
-            pattern_properties={
-                '^x-': validators.Any(),
-            },
-            additional_properties=False,
-        ),
-        'Server': validators.Object(
-            properties=[
-                ('url', validators.String()),
-                ('description', validators.String(format='textarea')),
-                ('variables', validators.Object(additional_properties=validators.Ref('ServerVariable'))),
-            ],
-            pattern_properties={
-                '^x-': validators.Any(),
-            },
-            additional_properties=False,
-            required=['url']
-        ),
-        'ServerVariable': validators.Object(
-            properties=[
-                ('enum', validators.Array(items=validators.String())),
-                ('default', validators.String()),
-                ('description', validators.String(format='textarea')),
-            ],
-            pattern_properties={
-                '^x-': validators.Any(),
-            },
-            additional_properties=False,
-            required=['default']
-        ),
-        'Paths': validators.Object(
-            pattern_properties=[
-                ('^/', validators.Ref('Path')),
-                ('^x-', validators.Any()),
-            ],
-            additional_properties=False,
-        ),
-        'Path': validators.Object(
-            properties=[
-                ('summary', validators.String()),
-                ('description', validators.String(format='textarea')),
-                ('get', validators.Ref('Operation')),
-                ('put', validators.Ref('Operation')),
-                ('post', validators.Ref('Operation')),
-                ('delete', validators.Ref('Operation')),
-                ('options', validators.Ref('Operation')),
-                ('head', validators.Ref('Operation')),
-                ('patch', validators.Ref('Operation')),
-                ('trace', validators.Ref('Operation')),
-                ('servers', validators.Array(items=validators.Ref('Server'))),
-                ('parameters', validators.Array(items=validators.Ref('Parameter'))),  # TODO: | ReferenceObject
-            ],
-            pattern_properties={
-                '^x-': validators.Any(),
-            },
-            additional_properties=False,
-        ),
-        'Operation': validators.Object(
-            properties=[
-                ('tags', validators.Array(items=validators.String())),
-                ('summary', validators.String()),
-                ('description', validators.String(format='textarea')),
-                ('externalDocs', validators.Ref('ExternalDocumentation')),
-                ('operationId', validators.String()),
-                ('parameters', validators.Array(items=validators.Ref('Parameter'))),  # TODO: | ReferenceObject
-                ('requestBody', REQUESTBODY_REF | validators.Ref('RequestBody')),  # TODO: RequestBody | ReferenceObject
-                ('responses', validators.Ref('Responses')),
-                # TODO: 'callbacks'
-                ('deprecated', validators.Boolean()),
-                ('security', validators.Array(validators.Ref('SecurityRequirement'))),
-                ('servers', validators.Array(items=validators.Ref('Server'))),
-            ],
-            pattern_properties={
-                '^x-': validators.Any(),
-            },
-            additional_properties=False,
-        ),
-        'ExternalDocumentation': validators.Object(
-            properties=[
-                ('description', validators.String(format='textarea')),
-                ('url', validators.String(format='url')),
-            ],
-            pattern_properties={
-                '^x-': validators.Any(),
-            },
-            additional_properties=False,
-            required=['url']
-        ),
-        'Parameter': validators.Object(
-            properties=[
-                ('name', validators.String()),
-                ('in', validators.String(enum=['query', 'header', 'path', 'cookie'])),
-                ('description', validators.String(format='textarea')),
-                ('required', validators.Boolean()),
-                ('deprecated', validators.Boolean()),
-                ('allowEmptyValue', validators.Boolean()),
-                ('style', validators.String()),
-                ('schema', JSON_SCHEMA | SCHEMA_REF),
-                ('example', validators.Any()),
-                # TODO: Other fields
-            ],
-            pattern_properties={
-                '^x-': validators.Any(),
-            },
-            additional_properties=False,
-            required=['name', 'in']
-        ),
-        'RequestBody': validators.Object(
-            properties=[
-                ('description', validators.String()),
-                ('content', validators.Object(additional_properties=validators.Ref('MediaType'))),
-                ('required', validators.Boolean()),
-            ],
-            pattern_properties={
-                '^x-': validators.Any(),
-            },
-            additional_properties=False,
-        ),
-        'Responses': validators.Object(
-            properties=[
-                ('default', validators.Ref('Response') | RESPONSE_REF),
-            ],
-            pattern_properties=[
-                ('^([1-5][0-9][0-9]|[1-5]XX)$', validators.Ref('Response') | RESPONSE_REF),
-                ('^x-', validators.Any()),
-            ],
-            additional_properties=False,
-        ),
-        'Response': validators.Object(
-            properties=[
-                ('description', validators.String()),
-                ('content', validators.Object(additional_properties=validators.Ref('MediaType'))),
-                ('headers', validators.Object(additional_properties=validators.Ref('Header'))),
-                # TODO: Header | ReferenceObject
-                # TODO: links
-            ],
-            pattern_properties={
-                '^x-': validators.Any(),
-            },
-            additional_properties=False,
-        ),
-        'MediaType': validators.Object(
-            properties=[
-                ('schema', JSON_SCHEMA | SCHEMA_REF),
-                ('example', validators.Any()),
-                # TODO 'examples', 'encoding'
-            ],
-            pattern_properties={
-                '^x-': validators.Any(),
-            },
-            additional_properties=False,
-        ),
-        'Header': validators.Object(
-            properties=[
-                ('description', validators.String(format='textarea')),
-                ('required', validators.Boolean()),
-                ('deprecated', validators.Boolean()),
-                ('allowEmptyValue', validators.Boolean()),
-                ('style', validators.String()),
-                ('schema', JSON_SCHEMA | SCHEMA_REF),
-                ('example', validators.Any()),
-                # TODO: Other fields
-            ],
-            pattern_properties={
-                '^x-': validators.Any(),
-            },
-            additional_properties=False
-        ),
-        'Components': validators.Object(
-            properties=[
-                ('schemas', validators.Object(additional_properties=JSON_SCHEMA)),
-                ('responses', validators.Object(additional_properties=validators.Ref('Response'))),
-                ('parameters', validators.Object(additional_properties=validators.Ref('Parameter'))),
-                ('requestBodies', validators.Object(additional_properties=validators.Ref('RequestBody'))),
-                ('securitySchemes', validators.Object(additional_properties=validators.Ref('SecurityScheme'))),
-                # TODO: Other fields
-            ],
-            pattern_properties={
-                '^x-': validators.Any(),
-            },
-            additional_properties=False,
-        ),
-        'Tag': validators.Object(
-            properties=[
-                ('name', validators.String()),
-                ('description', validators.String(format='textarea')),
-                ('externalDocs', validators.Ref('ExternalDocumentation')),
-            ],
-            pattern_properties={
-                '^x-': validators.Any(),
-            },
-            additional_properties=False,
-            required=['name']
-        ),
-        'SecurityRequirement': validators.Object(
-            additional_properties=validators.Array(items=validators.String()),
-        ),
-        'SecurityScheme': validators.Object(
-            properties=[
-                ('type', validators.String(enum=['apiKey', 'http', 'oauth2', 'openIdConnect'])),
-                ('description', validators.String(format='textarea')),
-                ('name', validators.String()),
-                ('in', validators.String(enum=['query', 'header', 'cookie'])),
-                ('scheme', validators.String()),
-                ('bearerFormat', validators.String()),
-                ('flows', validators.Any()),  # TODO: OAuthFlows
-                ('openIdConnectUrl', validators.String()),
-            ],
-            pattern_properties={
-                '^x-': validators.Any(),
-            },
-            additional_properties=False,
-            required=['type']
-        ),
-    }
+    required=['openapi', 'info', 'paths']
 )
 
+definitions['JSONSchema'] = JSONSchema
+
+definitions['Info'] = Object(
+    properties={
+        'title': String(allow_blank=True),
+        'description': String(format='textarea', allow_blank=True),
+        'termsOfService': String(format='url', allow_blank=True),
+        'contact': Reference('Contact', definitions=definitions),
+        'license': Reference('License', definitions=definitions),
+        'version': String(allow_blank=True),
+    },
+    pattern_properties={
+        '^x-': Any(),
+    },
+    additional_properties=False,
+    required=['title', 'version']
+)
+
+definitions['Contact'] = Object(
+    properties={
+        'name': String(),
+        'url': String(format='url'),
+        'email': String(format='email'),
+    },
+    pattern_properties={
+        '^x-': Any(),
+    },
+    additional_properties=False,
+)
+
+definitions['License'] = Object(
+    properties={
+        'name': String(),
+        'url': String(format='url'),
+    },
+    required=['name'],
+    pattern_properties={
+        '^x-': Any(),
+    },
+    additional_properties=False,
+)
+
+definitions['Server'] = Object(
+    properties={
+        'url': String(allow_blank=True),
+        'description': String(format='textarea'),
+        'variables': Object(additional_properties=Reference('ServerVariable', definitions=definitions)),
+    },
+    pattern_properties={
+        '^x-': Any(),
+    },
+    additional_properties=False,
+    required=['url']
+)
+
+definitions['ServerVariable'] = Object(
+    properties={
+        'enum': Array(items=String()),
+        'default': String(),
+        'description': String(format='textarea'),
+    },
+    pattern_properties={
+        '^x-': Any(),
+    },
+    additional_properties=False,
+    required=['default']
+)
+
+definitions['Paths'] = Object(
+    pattern_properties={
+        '^/': Reference('Path', definitions=definitions),
+        '^x-': Any(),
+    },
+    additional_properties=False,
+)
+
+definitions['Path'] = Object(
+    properties={
+        'summary': String(),
+        'description': String(format='textarea'),
+        'get': Reference('Operation', definitions=definitions),
+        'put': Reference('Operation', definitions=definitions),
+        'post': Reference('Operation', definitions=definitions),
+        'delete': Reference('Operation', definitions=definitions),
+        'options': Reference('Operation', definitions=definitions),
+        'head': Reference('Operation', definitions=definitions),
+        'patch': Reference('Operation', definitions=definitions),
+        'trace': Reference('Operation', definitions=definitions),
+        'servers': Array(items=Reference('Server', definitions=definitions)),
+        'parameters': Array(items=Reference('Parameter', definitions=definitions))  # TODO: | ReferenceObject
+    },
+    pattern_properties={
+        '^x-': Any(),
+    },
+    additional_properties=False,
+)
+
+definitions['Operation'] = Object(
+    properties={
+        'tags': Array(items=String()),
+        'summary': String(),
+        'description': String(format='textarea'),
+        'externalDocs': Reference('ExternalDocumentation', definitions=definitions),
+        'operationId': String(),
+        'parameters': Array(items=Reference('Parameter', definitions=definitions)),
+        # TODO: | ReferenceObject
+        'requestBody': RequestBodyRef | Reference('RequestBody', definitions=definitions),
+        # TODO: RequestBody | ReferenceObject
+        'responses': Reference('Responses', definitions=definitions),
+        # TODO: 'callbacks'
+        'deprecated': Boolean(),
+        'security': Array(Reference('SecurityRequirement', definitions=definitions)),
+        'servers': Array(items=Reference('Server', definitions=definitions)),
+    },
+    pattern_properties={
+        '^x-': Any(),
+    },
+    additional_properties=False,
+)
+
+definitions['ExternalDocumentation'] = Object(
+    properties={
+        'description': String(format='textarea'),
+        'url': String(format='url'),
+    },
+    pattern_properties={
+        '^x-': Any(),
+    },
+    additional_properties=False,
+    required=['url']
+)
+
+definitions['Parameter'] = Object(
+    properties={
+        'name': String(),
+        'in': Choice(choices=['query', 'header', 'path', 'cookie']),
+        'description': String(format='textarea'),
+        'required': Boolean(),
+        'deprecated': Boolean(),
+        'allowEmptyValue': Boolean(),
+        'style': String(),
+        'schema': Reference('JSONSchema', definitions=definitions) | SchemaRef,
+        'example': Any(),
+        # TODO: Other fields
+    },
+    pattern_properties={
+        '^x-': Any(),
+    },
+    additional_properties=False,
+    required=['name', 'in']
+)
+
+definitions['RequestBody'] = Object(
+    properties={
+        'description': String(),
+        'content': Object(additional_properties=Reference('MediaType', definitions=definitions)),
+        'required': Boolean(),
+    },
+    pattern_properties={
+        '^x-': Any(),
+    },
+    additional_properties=False,
+)
+
+definitions['Responses'] = Object(
+    properties={
+        'default': Reference('Response', definitions=definitions) | ResponseRef,
+    },
+    pattern_properties={
+        '^([1-5][0-9][0-9]|[1-5]XX)$': Reference('Response', definitions=definitions) | ResponseRef,
+        '^x-': Any(),
+    },
+    additional_properties=False,
+)
+
+definitions['Response'] = Object(
+    properties={
+        'description': String(),
+        'content': Object(additional_properties=Reference('MediaType', definitions=definitions)),
+        'headers': Object(additional_properties=Reference('Header', definitions=definitions)),
+        # TODO: Header | ReferenceObject
+        # TODO: links
+    },
+    pattern_properties={
+        '^x-': Any(),
+    },
+    additional_properties=False,
+)
+
+definitions['MediaType'] = Object(
+    properties={
+        'schema': Reference('JSONSchema', definitions=definitions) | SchemaRef,
+        'example': Any(),
+        # TODO 'examples', 'encoding'
+    },
+    pattern_properties={
+        '^x-': Any(),
+    },
+    additional_properties=False,
+)
+
+definitions['Header'] = Object(
+    properties={
+        'description': String(format='textarea'),
+        'required': Boolean(),
+        'deprecated': Boolean(),
+        'allowEmptyValue': Boolean(),
+        'style': String(),
+        'schema': Reference('JSONSchema', definitions=definitions) | SchemaRef,
+        'example': Any(),
+        # TODO: Other fields
+    },
+    pattern_properties={
+        '^x-': Any(),
+    },
+    additional_properties=False
+)
+
+definitions['Components'] = Object(
+    properties={
+        'schemas': Object(additional_properties=Reference('JSONSchema', definitions=definitions)),
+        'responses': Object(additional_properties=Reference('Response', definitions=definitions)),
+        'parameters': Object(additional_properties=Reference('Parameter', definitions=definitions)),
+        'requestBodies': Object(additional_properties=Reference('RequestBody', definitions=definitions)),
+        'securitySchemes': Object(additional_properties=Reference('SecurityScheme', definitions=definitions)),
+        # TODO: Other fields
+    },
+    pattern_properties={
+        '^x-': Any(),
+    },
+    additional_properties=False,
+)
+
+definitions['Tag'] = Object(
+    properties={
+        'name': String(),
+        'description': String(format='textarea'),
+        'externalDocs': Reference('ExternalDocumentation', definitions=definitions),
+    },
+    pattern_properties={
+        '^x-': Any(),
+    },
+    additional_properties=False,
+    required=['name']
+)
+
+definitions['SecurityRequirement'] = Object(
+    additional_properties=Array(items=String()),
+)
+
+definitions['SecurityScheme'] = Object(
+    properties={
+        'type': Choice(choices=['apiKey', 'http', 'oauth2', 'openIdConnect']),
+        'description': String(format='textarea'),
+        'name': String(),
+        'in': Choice(choices=['query', 'header', 'cookie']),
+        'scheme': String(),
+        'bearerFormat': String(),
+        'flows': Any(),  # TODO: OAuthFlows
+        'openIdConnectUrl': String(),
+    },
+    pattern_properties={
+        '^x-': Any(),
+    },
+    additional_properties=False,
+    required=['type']
+)
 
 METHODS = [
     'get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'
@@ -301,9 +323,9 @@ class OpenAPICodec(BaseCodec):
         if not isinstance(document, Document):
             error = 'Document instance expected.'
             raise TypeError(error)
-        schema_defs = {}
-        paths = self.get_paths(document, schema_defs=schema_defs)
-        data = self.validate_document(document, schema_defs, paths)
+        definitions = Definitions('#/components/schemas/')
+        paths = self.get_paths(document, definitions=definitions)
+        data = self.validate_document(document, definitions, paths)
         kwargs = {
             'ensure_ascii': False,
             'indent': 4,
@@ -311,8 +333,9 @@ class OpenAPICodec(BaseCodec):
         }
         return json.dumps(data, **kwargs).encode('utf-8')
 
-    def validate_document(self, document, schema_defs, paths):
-        openapi = OPEN_API.validate({
+    @staticmethod
+    def validate_document(document, definitions, paths):
+        openapi = OpenAPI.validate({
             'openapi': '3.0.0',
             'info': {
                 'version': document.version,
@@ -325,8 +348,8 @@ class OpenAPICodec(BaseCodec):
             'paths': paths
         })
 
-        if schema_defs:
-            openapi['components'] = {'schemas': schema_defs}
+        if definitions:
+            openapi['components'] = {'schemas': dict(definitions)}
 
         if not document.url:
             openapi.pop('servers')
@@ -340,18 +363,15 @@ class OpenAPICodec(BaseCodec):
             content = content.decode('utf-8', 'ignore')
 
         try:
-            data = json.loads(content, object_pairs_hook=collections.OrderedDict)
+            data = json.loads(content, object_pairs_hook=dict_type)
         except ValueError as exc:
-            message = ErrorMessage(text='Malformed JSON. %s' % exc,
-                                   index=['body'],
-                                   code='parse_failed')
-            raise ParseError(messages=[message]) from None
-
+            raise exceptions.ParseError(text='Malformed JSON. %s' % exc,
+                                        code='codec',
+                                        key='body') from None
         return self.validate_data(data)
 
     def validate_data(self, data):
-        data = OPEN_API.validate(data)
-
+        data = OpenAPI.validate(data)
         title = self.lookup(data, ['info', 'title'])
         description = self.lookup(data, ['info', 'description'])
         version = self.lookup(data, ['info', 'version'])
@@ -362,17 +382,13 @@ class OpenAPICodec(BaseCodec):
         return Document(title=title, description=description, version=version, url=base_url, content=content)
 
     def get_schema_definitions(self, data):
-        definitions = {}
+        definitions = SchemaDefinitions()
         schemas = self.lookup(data, ['components', 'schemas'], {})
         for key, value in schemas.items():
-            definitions[key] = JSONSchemaCodec().decode_from_data_structure(value)
-            definitions[key].def_name = key
+            definitions[key] = from_json_schema(value, definitions)
         return definitions
 
     def get_content(self, data, base_url, schema_definitions):
-        """
-        Return all the links in the document, layed out by tag and operationId.
-        """
         links_by_tag = dict_type()
         links = []
 
@@ -439,7 +455,7 @@ class OpenAPICodec(BaseCodec):
                 schema = schema_definitions.get(ref)
                 field_name = ref.lower()
             else:
-                schema = JSONSchemaCodec().decode_from_data_structure(body_schema)
+                schema = from_json_schema(body_schema, schema_definitions)
                 field_name = 'body'
             field_name = self.lookup(operation_info, ['requestBody', 'x-name'], default=field_name)
             fields += [Field(name=field_name, location='body', schema=schema)]
@@ -471,7 +487,7 @@ class OpenAPICodec(BaseCodec):
                 ref = schema['$ref'][len('#/components/schemas/'):]
                 schema = schema_definitions.get(ref)
             else:
-                schema = JSONSchemaCodec().decode_from_data_structure(schema)
+                schema = from_json_schema(schema, schema_definitions)
 
         return Field(
             name=name,
@@ -482,7 +498,7 @@ class OpenAPICodec(BaseCodec):
             example=example
         )
 
-    def get_paths(self, document, schema_defs=None):
+    def get_paths(self, document, definitions=None):
         paths = dict_type()
 
         for link, name, sections in document.walk_links():
@@ -493,11 +509,11 @@ class OpenAPICodec(BaseCodec):
 
             if path not in paths:
                 paths[path] = {}
-            paths[path][method] = self.get_operation(link, operation_id, tag=tag, schema_defs=schema_defs)
+            paths[path][method] = self.get_operation(link, operation_id, tag=tag, definitions=definitions)
 
         return paths
 
-    def get_operation(self, link, operation_id, tag=None, schema_defs=None):
+    def get_operation(self, link, operation_id, tag=None, definitions=None):
         operation = {
             'operationId': operation_id
         }
@@ -507,22 +523,18 @@ class OpenAPICodec(BaseCodec):
             operation['description'] = link.description
         if tag:
             operation['tags'] = [tag]
-        if link.get_path_fields() or link.get_query_fields():
+        if link.path_fields or link.query_fields:
             operation['parameters'] = [
-                self.get_parameter(field, schema_defs) for field in
-                link.get_path_fields() + link.get_query_fields()
+                self.get_parameter(field, definitions) for field in
+                link.path_fields + link.query_fields
             ]
-        if link.get_body_field():
-            schema = link.get_body_field().schema
+        if link.body_field:
+            schema = link.body_field.schema
             if schema is None:
                 content_info = {}
             else:
                 content_info = {
-                    'schema': JSONSchemaCodec().encode_to_data_structure(
-                        schema,
-                        schema_defs,
-                        '#/components/schemas/'
-                    )
+                    'schema': to_json_schema(schema, definitions)
                 }
 
             operation['requestBody'] = {
@@ -536,11 +548,7 @@ class OpenAPICodec(BaseCodec):
                     'description': '',
                     'content': {
                         link.response.encoding: {
-                            'schema': JSONSchemaCodec().encode_to_data_structure(
-                                link.response.schema,
-                                schema_defs,
-                                '#/components/schemas/'
-                            )
+                            'schema': to_json_schema(link.response.schema, definitions)
                         }
                     }
                 }
@@ -548,7 +556,7 @@ class OpenAPICodec(BaseCodec):
         return operation
 
     @staticmethod
-    def get_parameter(field, schema_defs=None):
+    def get_parameter(field, definitions=None):
         parameter = {
             'name': field.name,
             'in': field.location
@@ -558,11 +566,7 @@ class OpenAPICodec(BaseCodec):
         if field.description:
             parameter['description'] = field.description
         if field.schema:
-            parameter['schema'] = JSONSchemaCodec().encode_to_data_structure(
-                field.schema,
-                schema_defs,
-                '#/components/schemas/'
-            )
+            parameter['schema'] = to_json_schema(field.schema, definitions)
         return parameter
 
     @staticmethod

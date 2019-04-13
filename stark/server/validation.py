@@ -1,12 +1,11 @@
 import inspect
 import typing
-
-from stark import types, validators
-from stark import codecs, exceptions, http
+import datetime
+import decimal
+from stark import codecs, exceptions, http, schemas
 from stark.conneg import negotiate_content_type
 from stark.server.components import Component
 from stark.server.core import Route
-
 
 ValidatedPathParams = typing.NewType('ValidatedPathParams', dict)
 ValidatedQueryParams = typing.NewType('ValidatedQueryParams', dict)
@@ -40,49 +39,37 @@ class RequestDataComponent(Component):
         try:
             return codec.decode(content, headers=headers)
         except exceptions.ValidationError as exc:
-            raise exceptions.BadRequest(exc.as_dict())
+            raise exceptions.BadRequest(dict(exc))
 
 
 class ValidatePathParamsComponent(Component):
     def resolve(self,
                 route: Route,
                 path_params: http.PathParams) -> ValidatedPathParams:
-        path_fields = route.link.get_path_fields()
-
-        validator = validators.Object(
-            properties=[
-                (field.name, field.schema if field.schema else validators.Any())
-                for field in path_fields
-            ],
+        path_fields = route.link.path_fields
+        validator = schemas.Object(
+            properties={field.name: field.schema for field in path_fields},
             required=[field.name for field in path_fields]
         )
-
         try:
-            path_params = validator.validate(path_params, allow_coerce=True)
-        except validators.ValidationError as exc:
-            raise exceptions.NotFound(exc.as_dict())
-        return ValidatedPathParams(path_params)
+            return validator.validate(path_params)
+        except exceptions.ValidationError as exc:
+            raise exceptions.NotFound(dict(exc))
 
 
 class ValidateQueryParamsComponent(Component):
     def resolve(self,
                 route: Route,
                 query_params: http.QueryParams) -> ValidatedQueryParams:
-        query_fields = route.link.get_query_fields()
-
-        validator = validators.Object(
-            properties=[
-                (field.name, field.schema if field.schema else validators.Any())
-                for field in query_fields
-            ],
+        query_fields = route.link.query_fields
+        validator = schemas.Object(
+            properties={field.name: field.schema for field in query_fields},
             required=[field.name for field in query_fields if field.required]
         )
-
         try:
-            query_params = validator.validate(query_params, allow_coerce=True)
-        except validators.ValidationError as exc:
-            raise exceptions.BadRequest(exc.as_dict())
-        return ValidatedQueryParams(query_params)
+            return validator.validate(query_params)
+        except exceptions.ValidationError as exc:
+            raise exceptions.BadRequest(dict(exc))
 
 
 class ValidateRequestDataComponent(Component):
@@ -92,62 +79,41 @@ class ValidateRequestDataComponent(Component):
     def resolve(self,
                 route: Route,
                 data: http.RequestData):
-        body_field = route.link.get_body_field()
-
-        if not body_field or not body_field.schema:
+        body_field = route.link.body_field
+        if not body_field:
             return data
-
         validator = body_field.schema
-
         try:
-            return validator.validate(data, allow_coerce=True)
-        except validators.ValidationError as exc:
-            raise exceptions.BadRequest(exc.as_dict())
+            return validator.validate(data)
+        except exceptions.ValidationError as exc:
+            raise exceptions.BadRequest(dict(exc))
 
 
 class PrimitiveParamComponent(Component):
     def can_handle_parameter(self, parameter: inspect.Parameter):
-        return parameter.annotation in (str, int, float, bool, parameter.empty)
+        return parameter.annotation in (
+            str, int, float, bool, datetime.datetime, datetime.date,
+            datetime.time, decimal.Decimal, parameter.empty
+        )
 
     def resolve(self,
                 parameter: inspect.Parameter,
                 path_params: ValidatedPathParams,
                 query_params: ValidatedQueryParams):
-        params = path_params if (parameter.name in path_params) else query_params
-        has_default = parameter.default is not parameter.empty
-        allow_null = parameter.default is None
-
-        param_validator = {
-            parameter.empty: validators.Any(),
-            str: validators.String(allow_null=allow_null),
-            int: validators.Integer(allow_null=allow_null),
-            float: validators.Number(allow_null=allow_null),
-            bool: validators.Boolean(allow_null=allow_null)
-        }[parameter.annotation]
-
-        validator = validators.Object(
-            properties=[(parameter.name, param_validator)],
-            required=[] if has_default else [parameter.name]
-        )
-
-        try:
-            params = validator.validate(params, allow_coerce=True)
-        except validators.ValidationError as exc:
-            raise exceptions.NotFound(exc.as_dict())
-        return params.get(parameter.name, parameter.default)
+        if parameter.name in path_params:
+            return path_params[parameter.name]
+        return query_params[parameter.name]
 
 
 class CompositeParamComponent(Component):
     def can_handle_parameter(self, parameter: inspect.Parameter):
-        return issubclass(parameter.annotation, types.Type)
+        return (isinstance(parameter.annotation, type)
+                and issubclass(parameter.annotation, schemas.Schema))
 
     def resolve(self,
                 parameter: inspect.Parameter,
                 data: ValidatedRequestData):
-        try:
-            return parameter.annotation(data)
-        except validators.ValidationError as exc:
-            raise exceptions.BadRequest(exc.as_dict())
+        return parameter.annotation(data)
 
 
 VALIDATION_COMPONENTS = (

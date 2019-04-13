@@ -70,7 +70,8 @@ setup(
     install_requires=[
         'jinja2',
         'werkzeug',
-        'whitenoise'
+        'whitenoise',
+        'typesystem'
     ],
     classifiers=[
         'Development Status :: 3 - Alpha',
