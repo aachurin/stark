@@ -17,7 +17,7 @@ def serve_documentation(app: App):
     return app.render_template(
         template_name,
         document=app.document,
-        langs=['javascript', 'python'],
+        langs=['python', 'javascript'],
         code_style=code_style
     )
 

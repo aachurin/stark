@@ -1,18 +1,18 @@
-<pre class="highlight python {% if not is_selected %}d-none{% endif %}" data-language="python"><code>import requests
+<pre class="highlight python {% if not is_selected %}d-none{% endif %}" data-language="python"><code><span class="word">import</span> requests
 
-url = "{{ link.url }}"{% raw %}
+url = <span class="string">"{{ link.url }}"</span>{% raw %}
 {% endraw %}
-{%- if link.get_query_fields() %}params = {
-{% for field in link.get_query_fields() %}    "{{ field.name }}": ...{% if not loop.last %},{% endif %}
+{%- if link.query_fields %}params = {
+{% for field in link.query_fields %}    <span class="string">"{{ field.name }}"</span>: ...{% if not loop.last %},{% endif %}
 {% endfor %}}
 {% endif %}
-{%- if link.get_body_field() and not link.get_expanded_body() %}data = ...
+{%- if link.body_field and not link.get_expanded_body() %}data = ...
 {% endif %}
-{%- if link.get_body_field() and link.get_expanded_body() %}data = {
-{% for key, schema in link.get_expanded_body().items() %}    "{{ key }}": ...{% if not loop.last %},{% endif %}
+{%- if link.body_field and link.get_expanded_body() %}data = {
+{% for key, schema in link.get_expanded_body().properties.items() %}    <span class="string">"{{ key }}"</span>: ...{% if not loop.last %},{% endif %}
 {% endfor %}}
 {% endif %}
-response = requests.{{ link.method.lower() }}(url{% if link.get_query_fields() %}, params=params{% endif %}{% if link.get_body_field() %}, json=data{% endif %})
-response.raise_for_status()
-print(response.json())
+response = requests.<span class="attr">{{ link.method.lower() }}</span>(url{% if link.query_fields %}, <span class="kwarg">params</span>=params{% endif %}{% if link.body_field %}, <span class="kwarg">json</span>=data{% endif %})
+response.<span class="attr">raise_for_status</span>()
+<span class="global">print</span>(response.<span class="attr">json</span>())
 </code></pre>

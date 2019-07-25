@@ -43,7 +43,7 @@ To render a template, use `app.render_template(template_name, **context)`.
 
 ```python
 import os
-from apistar import App, Route
+from stark import App, Route
 
 
 BASE_DIR = os.path.dirname(__file__)

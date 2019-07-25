@@ -68,7 +68,7 @@ pre.highlight code {
   z-index: 10 !important;
   border: 1px solid #d3d3d3;
   padding: 0.5em 1em 0.5em 0.5em;
-  font-size: 1.2em;       
+  font-size: 1.2em;
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
@@ -202,7 +202,7 @@ body {
     margin-top: 61px;
       max-width: 100%;
   }
-  
+
   .sidebar .brand {
     margin-top: 0;
     margin-bottom: 0;
@@ -327,7 +327,7 @@ pre {
     background-color: #5CAABF;
 }
 
-.nav-pills a, 
+.nav-pills a,
 .nav-pills a:hover,
 .nav-pills a:visited  {
   color: #fff;
@@ -341,9 +341,13 @@ a:hover, a:visited {
     color: #3D717F;
 }
 
-
 @media (min-width: 767px) {
   .intro-title {
     margin-top: 1.5em;
   }
+}
+
+.required {
+    font-weight: bold;
+    color: red;
 }

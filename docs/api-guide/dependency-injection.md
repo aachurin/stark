@@ -1,6 +1,6 @@
 # Dependency Injection
 
-API Star allows you to include various parameters on handler functions and
+Stark allows you to include various parameters on handler functions and
 event hooks, and will automatically provide those parameters as required.
 
 You can add additional components, making them available to handler functions
@@ -9,11 +9,11 @@ if they are included in an annotation.
 Here's an example that makes the `User` annotation available to handler functions.
 
 ```python
-from apistar import App, Route, exceptions, http
-from apistar.server.components import Component
+import base64
+from stark import App, Route, Component, exceptions, http
 
 
-class User(object):
+class User:
     def __init__(self, username: str):
         self.username = username
 

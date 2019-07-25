@@ -1,10 +1,8 @@
 from io import BytesIO
 from itertools import chain
-
 from werkzeug.datastructures import ImmutableMultiDict
 from werkzeug.formparser import FormDataParser
 from werkzeug.http import parse_options_header
-
 from stark.codecs.base import BaseCodec
 
 

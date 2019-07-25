@@ -1,17 +1,17 @@
 # Testing
 
-API Star isn't coupled to any particular testing framework.
+Stark isn't coupled to any particular testing framework.
 
 One good option for writing your test cases is [the pytest framework][pytest].
 
-To make it easier to run tests against your application, API Star includes
+To make it easier to run tests against your application, Stark includes
 a test client, that acts as an adapter for the excellent python `requests`
 library, allowing you to make requests directly to your application.
 
 You can use the API test client with *any* WSGI or ASGI application.
 
 ```python
-from apistar import test
+from stark import test
 from myproject import app
 
 

@@ -1,7 +1,7 @@
 import typing
 
 from stark.compat import jinja2
-from stark.utils import get_path
+from stark.server.utils import get_path
 
 
 def get_jinja_prefix_loader(dirs):
@@ -11,11 +11,11 @@ def get_jinja_prefix_loader(dirs):
     })
 
 
-def get_jinja_path_loader(dir):
-    return jinja2.FileSystemLoader(get_path(dir))
+def get_jinja_path_loader(path):
+    return jinja2.FileSystemLoader(get_path(path))
 
 
-class BaseTemplates():
+class BaseTemplates:
     def render_template(self, path: str, **context):
         raise NotImplementedError()
 

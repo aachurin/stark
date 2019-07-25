@@ -1,5 +1,5 @@
 import json
-from stark.exceptions import ParseError
+from stark.schema import ParseError
 from stark.compat import dict_type
 from stark.codecs.base import BaseCodec
 

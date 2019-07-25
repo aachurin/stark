@@ -1,7 +1,8 @@
 import collections
 import re
 import typing
-from stark import schemas
+from stark import schema
+
 
 LinkInfo = collections.namedtuple('LinkInfo', ['link', 'name', 'sections'])
 
@@ -110,6 +111,7 @@ class Link:
                  response: 'Response' = None,
                  title: str = '',
                  description: str = '',
+                 tags: typing.Sequence[str] = None,
                  fields: typing.Sequence['Field'] = None):
 
         method = method.upper()
@@ -149,9 +151,14 @@ class Link:
         self.response = response
         self.title = title
         self.description = description
-        self.path_fields = path_fields
-        self.query_fields = query_fields
+        self.path_fields = tuple(path_fields)
+        self.query_fields = tuple(query_fields)
         self.body_field = body_fields[0] if body_fields else None
+        self.tags = list(tags) if tags else None
+
+    def get_expanded_body(self):
+        if self.body_field and schema.is_schema(self.body_field.schema):
+            return self.body_field.schema.make_validator()
 
 
 class Field:
@@ -161,7 +168,7 @@ class Field:
                  title: str = '',
                  description: str = '',
                  required: bool = None,
-                 schema: typing.Union[schemas.Field, typing.Type[schemas.SchemaBase]] = None,
+                 schema: typing.Union[schema.Field, typing.Type[schema.SchemaBase]] = None,
                  example: typing.Any = None):
         assert location in ('path', 'query', 'body', 'cookie', 'header', 'formData')
         if required is None:
@@ -179,7 +186,7 @@ class Field:
 
 
 class Response:
-    def __init__(self, encoding: str, status_code: int = 200, schema: schemas.Field = None):
+    def __init__(self, encoding: str, status_code: int = 200, schema: schema.Field = None):
         self.encoding = encoding
         self.status_code = status_code
         self.schema = schema

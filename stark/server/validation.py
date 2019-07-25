@@ -2,14 +2,15 @@ import inspect
 import typing
 import datetime
 import decimal
-from stark import codecs, exceptions, http, schemas
+import uuid
+from stark import codecs, exceptions, http, schema
 from stark.conneg import negotiate_content_type
 from stark.server.components import Component
 from stark.server.core import Route
 
-ValidatedPathParams = typing.NewType('ValidatedPathParams', dict)
-ValidatedQueryParams = typing.NewType('ValidatedQueryParams', dict)
-ValidatedRequestData = typing.TypeVar('ValidatedRequestData')
+ValidatedPathParams = typing.NewType("ValidatedPathParams", dict)
+ValidatedQueryParams = typing.NewType("ValidatedQueryParams", dict)
+ValidatedRequestData = typing.TypeVar("ValidatedRequestData")
 
 
 class RequestDataComponent(Component):
@@ -29,7 +30,7 @@ class RequestDataComponent(Component):
         if not content:
             return None
 
-        content_type = headers.get('Content-Type')
+        content_type = headers.get("Content-Type")
 
         try:
             codec = negotiate_content_type(self.codecs, content_type)
@@ -47,7 +48,7 @@ class ValidatePathParamsComponent(Component):
                 route: Route,
                 path_params: http.PathParams) -> ValidatedPathParams:
         path_fields = route.link.path_fields
-        validator = schemas.Object(
+        validator = schema.Object(
             properties={field.name: field.schema for field in path_fields},
             required=[field.name for field in path_fields]
         )
@@ -62,7 +63,7 @@ class ValidateQueryParamsComponent(Component):
                 route: Route,
                 query_params: http.QueryParams) -> ValidatedQueryParams:
         query_fields = route.link.query_fields
-        validator = schemas.Object(
+        validator = schema.Object(
             properties={field.name: field.schema for field in query_fields},
             required=[field.name for field in query_fields if field.required]
         )
@@ -93,7 +94,7 @@ class PrimitiveParamComponent(Component):
     def can_handle_parameter(self, parameter: inspect.Parameter):
         return parameter.annotation in (
             str, int, float, bool, datetime.datetime, datetime.date,
-            datetime.time, decimal.Decimal, parameter.empty
+            datetime.time, decimal.Decimal, uuid.UUID, parameter.empty
         )
 
     def resolve(self,
@@ -108,7 +109,7 @@ class PrimitiveParamComponent(Component):
 class CompositeParamComponent(Component):
     def can_handle_parameter(self, parameter: inspect.Parameter):
         return (isinstance(parameter.annotation, type)
-                and issubclass(parameter.annotation, schemas.Schema))
+                and issubclass(parameter.annotation, schema.SchemaBase))
 
     def resolve(self,
                 parameter: inspect.Parameter,

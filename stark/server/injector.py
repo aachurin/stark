@@ -5,8 +5,11 @@ from stark.server.components import ReturnValue
 
 
 class BaseInjector:
-    def run(self, func, state):
-        raise NotImplementedError()
+    def run(self, func, state, cache=True):
+        raise RuntimeError("Not supported")
+
+    async def run_async(self, funcs, state, cache=True):
+        raise RuntimeError("Not supported")
 
 
 class Injector(BaseInjector):

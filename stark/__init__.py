@@ -7,7 +7,7 @@
 
 """
 
-from stark.server import App, Component, Include, Route
+from stark.server import App, Component, Settings, Include, Route
 from stark.test import TestClient
 
 

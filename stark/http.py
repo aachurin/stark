@@ -1,21 +1,22 @@
 import json
 import typing
+from datetime import datetime, date, time
 from urllib.parse import urlparse
-from stark import codecs, exceptions, schemas
+from stark import schema
 
 
-Method = typing.NewType('Method', str)
-Scheme = typing.NewType('Scheme', str)
-Host = typing.NewType('Host', str)
-Port = typing.NewType('Port', int)
-Path = typing.NewType('Path', str)
-QueryString = typing.NewType('QueryString', str)
-QueryParam = typing.NewType('QueryParam', str)
-Header = typing.NewType('Header', str)
-Body = typing.NewType('Body', bytes)
-PathParams = typing.NewType('PathParams', dict)
-PathParam = typing.NewType('PathParam', str)
-RequestData = typing.TypeVar('RequestData')
+Method = typing.NewType("Method", str)
+Scheme = typing.NewType("Scheme", str)
+Host = typing.NewType("Host", str)
+Port = typing.NewType("Port", int)
+Path = typing.NewType("Path", str)
+QueryString = typing.NewType("QueryString", str)
+QueryParam = typing.NewType("QueryParam", str)
+Header = typing.NewType("Header", str)
+Body = typing.NewType("Body", bytes)
+PathParams = typing.NewType("PathParams", dict)
+PathParam = typing.NewType("PathParam", str)
+RequestData = typing.TypeVar("RequestData")
 
 
 class URL(str):
@@ -25,7 +26,7 @@ class URL(str):
     """
     @property
     def components(self):
-        if not hasattr(self, '_components'):
+        if not hasattr(self, "_components"):
             self._components = urlparse(self)
         return self._components
 
@@ -42,7 +43,7 @@ class QueryParams(typing.Mapping[str, str]):
     def __init__(self, value: typing.Union[StrMapping, StrPairs] = None) -> None:
         if value is None:
             value = []
-        if hasattr(value, 'items'):
+        if hasattr(value, "items"):
             items = list(value.items())
         else:
             items = list(value)
@@ -88,7 +89,7 @@ class QueryParams(typing.Mapping[str, str]):
         return sorted(self._list) == sorted(other._list)
 
     def __repr__(self):
-        return 'QueryParams(%s)' % repr(self._list)
+        return "QueryParams(%s)" % repr(self._list)
 
 
 class Headers(typing.Mapping[str, str]):
@@ -99,7 +100,7 @@ class Headers(typing.Mapping[str, str]):
     def __init__(self, value: typing.Union[StrMapping, StrPairs] = None) -> None:
         if value is None:
             value = []
-        if hasattr(value, 'items'):
+        if hasattr(value, "items"):
             items = [(k.lower(), str(v)) for k, v in list(value.items())]
         else:
             items = [(k.lower(), str(v)) for k, v in list(value)]
@@ -147,7 +148,7 @@ class Headers(typing.Mapping[str, str]):
         return sorted(self._list) == sorted(other._list)
 
     def __repr__(self):
-        return '%s(%s)' % (self.__class__.__name__, repr(self._list))
+        return "%s(%s)" % (self.__class__.__name__, repr(self._list))
 
 
 class MutableHeaders(Headers):
@@ -175,12 +176,12 @@ class Request:
         self.method = method
         self.url = url
         self.headers = Headers() if (headers is None) else headers
-        self.body = Body(b'') if (body is None) else body
+        self.body = Body(b"") if (body is None) else body
 
 
 class Response:
     media_type = None
-    charset = 'utf-8'
+    charset = "utf-8"
 
     def __init__(self,
                  content: typing.Any,
@@ -206,58 +207,50 @@ class Response:
         )
 
     def set_default_headers(self):
-        if 'Content-Length' not in self.headers:
-            self.headers['Content-Length'] = str(len(self.content))
+        if "Content-Length" not in self.headers:
+            self.headers["Content-Length"] = str(len(self.content))
 
-        if 'Content-Type' not in self.headers and self.media_type is not None:
+        if "Content-Type" not in self.headers and self.media_type is not None:
             content_type = self.media_type
             if self.charset is not None:
-                content_type += '; charset=%s' % self.charset
-            self.headers['Content-Type'] = content_type
+                content_type += "; charset=%s" % self.charset
+            self.headers["Content-Type"] = content_type
 
 
 class HTMLResponse(Response):
-    media_type = 'text/html'
-    charset = 'utf-8'
+    media_type = "text/html"
+    charset = "utf-8"
+
+
+DateTimeField = schema.DateTime()
+DateField = schema.Date()
+TimeField = schema.Time()
 
 
 class JSONResponse(Response):
-    media_type = 'application/json'
+    media_type = "application/json"
     charset = None
     options = {
-        'ensure_ascii': False,
-        'allow_nan': False,
-        'indent': None,
-        'separators': (',', ':'),
+        "ensure_ascii": False,
+        "allow_nan": False,
+        "indent": None,
+        "separators": (",", ":"),
     }
 
     def render(self, content: typing.Any) -> bytes:
-        options = {'default': self.default}
+        options = {"default": self.default}
         options.update(self.options)
-        return json.dumps(content, **options).encode('utf-8')
+        return json.dumps(content, **options).encode("utf-8")
 
     @staticmethod
     def default(obj: typing.Any) -> typing.Any:
-        if isinstance(obj, schemas.SchemaBase):
+        if isinstance(obj, schema.SchemaBase):
             return dict(obj)
+        if isinstance(obj, datetime):
+            return DateTimeField.serialize(obj)
+        if isinstance(obj, date):
+            return DateField.serialize(obj)
+        if isinstance(obj, time):
+            return TimeField.serialize(obj)
         error = "Object of type '%s' is not JSON serializable."
         raise TypeError(error % type(obj).__name__)
-
-
-class EncodedResponse(Response):
-    encoders = {
-        codecs.JSONSchemaCodec.media_type: codecs.JSONSchemaCodec,
-        codecs.JSONCodec.media_type: codecs.JSONCodec,
-        codecs.OpenAPICodec.media_type: codecs.OpenAPICodec
-    }
-
-    def __init__(self, content: typing.Any, media_type: str, **kwargs) -> None:
-        self.media_type = media_type
-        super().__init__(content, **kwargs)
-
-    def render(self, content: typing.Any) -> bytes:
-        try:
-            codec = self.encoders[self.media_type]
-        except KeyError:
-            raise exceptions.UnsupportedMediaType()
-        return codec().encode(content)

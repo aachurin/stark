@@ -1,5 +1,5 @@
 from typing import Union
-from typesystem import Message, ValidationError, ParseError
+from stark.schema import Message, ValidationError, ParseError
 
 
 __all__ = ('ValidationError', 'Message', 'ParseError', 'NoReverseMatch', 'NoCodecAvailable', 'ConfigurationError',
@@ -78,6 +78,11 @@ class MethodNotAllowed(HTTPException):
 class NotAcceptable(HTTPException):
     default_status_code = 406
     default_detail = 'Could not satisfy the request Accept header'
+
+
+class Conflict(HTTPException):
+    default_status_code = 409
+    default_detail = 'Conflict'
 
 
 class UnsupportedMediaType(HTTPException):

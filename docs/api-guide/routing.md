@@ -3,7 +3,7 @@
 Use `{curly_braces}` in your URL conf to include a URL path parameter.
 
 ```python
-from apistar import App, Route
+from stark import App, Route
 
 
 def echo_username(username: str) -> dict:

@@ -1,67 +1,70 @@
 import sys
+import importlib
 import werkzeug
 from stark import exceptions
 from stark.http import HTMLResponse, JSONResponse, PathParams, Response
 from stark.server.adapters import ASGItoWSGIAdapter
 from stark.server.asgi import ASGI_COMPONENTS, ASGIReceive, ASGIScope, ASGISend
 from stark.server.components import ReturnValue
-from stark.server.core import Route, generate_document
-from stark.server.injector import ASyncInjector, Injector
+from stark.server.core import Route, Settings, generate_document
+from stark.server.injector import ASyncInjector, Injector, BaseInjector
 from stark.server.router import Router
 from stark.server.staticfiles import ASyncStaticFiles, StaticFiles
 from stark.server.templates import Templates
 from stark.server.validation import VALIDATION_COMPONENTS
 from stark.server.wsgi import RESPONSE_STATUS_TEXT, WSGI_COMPONENTS, WSGIEnviron, WSGIStartResponse
+from stark.server.utils import import_path
+from stark.document import Document
 
 
-class App():
-    interface = 'wsgi'
+class App:
+    interface = "wsgi"
 
-    def __init__(self,
-                 routes,
-                 template_dirs=None,
-                 static_dirs=None,
-                 schema_url='/schema',
-                 docs_url='/docs/',
-                 docs_theme='apistar',
-                 static_url='/static/',
-                 components=None,
-                 event_hooks=None):
+    injector: BaseInjector
+    document: Document
+    router: Router
+    templates: Templates
+    statics: StaticFiles
 
-        template_dirs = template_dirs or []
-        if isinstance(template_dirs, tuple):
-            template_dirs = list(template_dirs)
-        if isinstance(template_dirs, str):
-            template_dirs = [template_dirs]
+    def __init__(self, settings_module: str = 'settings', event_hooks=None):
+        mod = importlib.import_module(settings_module)
+        self.settings = Settings(mod)
 
-        static_dirs = static_dirs or []
-        if isinstance(static_dirs, tuple):
-            static_dirs = list(static_dirs)
-        if isinstance(static_dirs, str):
-            static_dirs = [static_dirs]
+        static_url = self.settings.STATIC_URL
+        template_dirs = list(self.settings.TEMPLATE_DIRS)
+        static_dirs = list(self.settings.STATIC_DIRS)
+        schema_url = self.settings.SCHEMA_URL
+        docs_url = self.settings.DOCS_URL
+        docs_theme = self.settings.DOCS_THEME
+        components = self.settings.COMPONENTS
+        routes = self.settings.ROUTES
 
-        if docs_url is not None:
+        if docs_url:
             template_dirs += [
-                'stark:templates',
-                {'apistar': 'stark:themes/%s/templates' % docs_theme}
+                "stark:templates",
+                {"apistar": f"stark:themes/{docs_theme}/templates"}
             ]
-            static_dirs += ['stark:themes/%s/static' % docs_theme]
+            static_dirs += [f"stark:themes/{docs_theme}/static"]
 
         if not static_dirs:
             static_url = None
 
         if event_hooks:
-            msg = 'event_hooks must be a list.'
-            assert isinstance(event_hooks, (list, tuple)), msg
+            msg = "event_hooks must be a list."
+            assert isinstance(event_hooks, list), msg
 
+        self.debug = False
         self.init_injector(components)
-        self.init_document(routes)
-        routes += self.include_extra_routes(schema_url, docs_url, static_url)
-        self.init_router(routes)
         self.init_templates(template_dirs)
         self.init_staticfiles(static_url, static_dirs)
-        self.debug = False
         self.event_hooks = event_hooks
+
+        module = importlib.import_module(routes)
+        routes = module.routes or []
+        routes += self.include_extra_routes(schema_url, docs_url, static_url)
+
+        self.init_document(routes)
+        self.init_router(routes)
 
         # Ensure event hooks can all be instantiated.
         self.get_event_hooks()
@@ -114,6 +117,7 @@ class App():
     def init_injector(self, components=None):
         components = components if components else []
         components = list(WSGI_COMPONENTS + VALIDATION_COMPONENTS) + components
+        components = [(import_path(c)() if isinstance(c, str) else c) for c in components]
         initial_components = {
             'environ': WSGIEnviron,
             'start_response': WSGIStartResponse,
@@ -121,7 +125,8 @@ class App():
             'app': App,
             'path_params': PathParams,
             'route': Route,
-            'response': Response
+            'response': Response,
+            'settings': Settings
         }
         self.injector = Injector(components, initial_components)
 
@@ -153,9 +158,11 @@ class App():
         return on_request, on_response, on_error
 
     def static_url(self, filename):
+        assert self.router is not None, "Router is not initialized"
         return self.router.reverse_url('static', filename=filename)
 
     def reverse_url(self, name: str, **params):
+        assert self.router is not None, "Router is not initialized"
         return self.router.reverse_url(name, **params)
 
     def render_template(self, path: str, **context):
@@ -203,6 +210,7 @@ class App():
         state = {
             'environ': environ,
             'start_response': start_response,
+            'settings': self.settings,
             'exc': None,
             'app': self,
             'path_params': None,
@@ -251,7 +259,7 @@ class App():
 
 
 class ASyncApp(App):
-    interface = 'asgi'
+    interface = "asgi"
 
     def include_extra_routes(self, schema_url=None, docs_url=None, static_url=None):
         extra_routes = []
@@ -288,6 +296,7 @@ class ASyncApp(App):
             'path_params': PathParams,
             'route': Route,
             'response': Response,
+            'settings': Settings
         }
         self.injector = ASyncInjector(components, initial_components)
 

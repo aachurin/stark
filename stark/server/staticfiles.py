@@ -2,7 +2,7 @@ from http import HTTPStatus
 
 from stark import exceptions
 from stark.compat import aiofiles, whitenoise
-from stark.utils import get_path
+from stark.server.utils import get_path
 
 
 class BaseStaticFiles():
