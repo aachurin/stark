@@ -62,7 +62,6 @@ setup(
     long_description=get_long_description('README.md'),
     long_description_content_type='text/markdown',
     author='Tom Christie',
-    author_email='tom@tomchristie.com',
     maintainer='Andrey Churin',
     maintainer_email='aachurin@gmail.com',
     packages=get_packages('stark'),

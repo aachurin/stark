@@ -69,6 +69,13 @@ PRIMITIVES = {
 }
 
 
+def issubclass_safe(cls, classinfo):
+    try:
+        return issubclass(cls, classinfo)
+    except TypeError:
+        return False
+
+
 class Route:
     def __init__(self,
                  url: str,
@@ -116,15 +123,15 @@ class Route:
         for name, param in parameters.items():
             if name in path_names:
                 fields.append(self.generate_path_field(param, description.get(name, "")))
-            elif (param.annotation in PRIMITIVES
-                  or param.annotation is http.QueryParam
-                  or hasattr(param.annotation, "__schema__")):
-                fields += self.generate_query_fields(param, description.get(name, ""))
-            elif is_schema(param.annotation) and method in ("GET", "DELETE"):
-                fields += self.generate_query_fields_from_schema(param)
             elif is_schema(param.annotation):
-                fields.append(document.Field(name=name, location="body", schema=param.annotation))
-                body_params.append(param)
+                if method in ("GET", "DELETE"):
+                    fields += self.generate_query_fields_from_schema(param)
+                else:
+                    fields.append(document.Field(name=name, location="body", schema=param.annotation))
+                    body_params.append(param)
+            else:
+                fields += self.generate_query_fields(param, description.get(name, ""))
+
         if len(body_params) > 1:
             params = "\n  ".join(f"{x.name}: {x.annotation.__name__}" for x in body_params)
             msg = (
@@ -151,32 +158,66 @@ class Route:
 
     @staticmethod
     def generate_query_fields(param, description):
-        schema = None
-        if hasattr(param.annotation, "__schema__"):
-            schema = param.annotation.__schema__()
-        if isinstance(schema, (list, tuple)):
-            schema = dict(schema)
-        if isinstance(schema, typing.Mapping):
+        t = param.annotation
+        if hasattr(t, "__schema__"):
+            schema = t.__schema__()
+            if isinstance(schema, (list, tuple)):
+                schema = dict(schema)
             return [
                 document.Field(name=name, location="query", schema=field)
                 for name, field in schema.items()
             ]
-        if schema is None and (param.annotation in PRIMITIVES or param.annotation is http.QueryParam):
-            schema = PRIMITIVES.get(param.annotation, String)
-        if not schema:
-            raise TypeError(
-                f"Unsupported annotation {param.annotation} for query parameter `{param.name}`"
-            )
-        required = False
-        if isinstance(schema, type):
-            if param.default is param.empty:
-                required = True
-                kwargs = {}
-            elif param.default is None:
-                kwargs = {"default": None, "allow_null": True}
+
+        kwargs = {"description": description}
+        if t in PRIMITIVES:
+            schema = PRIMITIVES[t]
+        elif t is http.QueryParam:
+            schema = String
+        else:
+            o = getattr(t, "__origin__", t)
+            try:
+                generic = issubclass(o, (typing.Sequence, typing.Set, typing.Tuple))
+            except TypeError:
+                generic = False
+            if generic:
+                schema = Array
+                if issubclass(o, typing.Tuple):
+                    if hasattr(t, "__args__") and not t._special:
+                        if len(t.__args__) == 2 and t.__args__[1] is ...:
+                            try:
+                                kwargs["items"] = PRIMITIVES[t.__args__[0]]()
+                            except KeyError:
+                                raise TypeError(
+                                    f"Annotation `{param.name}: {param.annotation}` is not allowed"
+                                )
+                        else:
+                            try:
+                                kwargs["items"] = [PRIMITIVES[arg]() for arg in t.__args__]
+                            except KeyError:
+                                raise TypeError(
+                                    f"Annotation `{param.name}: {param.annotation}` is not allowed"
+                                )
+                else:
+                    kwargs["unique_items"] = issubclass(o, typing.Set)
+                    if hasattr(t, "__args__") and not t._special:
+                        try:
+                            kwargs["items"] = PRIMITIVES[t.__args__[0]]()
+                        except KeyError:
+                            raise TypeError(
+                                f"Annotation `{param.name}: {param.annotation}` is not allowed"
+                            )
             else:
-                kwargs = {"default": param.default}
-            schema = schema(description=description, **kwargs)
+                return []
+
+        required = False
+        if param.default is param.empty:
+            required = True
+        elif param.default is None:
+            kwargs["default"] = None
+            kwargs["allow_null"] = True
+        else:
+            kwargs["default"] = param.default
+        schema = schema(**kwargs)
         return [document.Field(name=param.name, location="query", required=required, schema=schema)]
 
     @staticmethod
@@ -190,60 +231,46 @@ class Route:
     def generate_response(self, handler):
         annotation = inspect.signature(handler).return_annotation
         annotation = self.coerce_generics(annotation)
-        if is_schema(annotation) or is_field(annotation):
-            return document.Response(encoding="application/json", status_code=200, schema=annotation)
+        return document.Response(encoding="application/json", status_code=200, schema=annotation)
 
-    def coerce_generics(self, annotation):
-        origin = getattr(annotation, "__origin__", annotation)
+    def coerce_generics(self, t):
+        if is_schema(t):
+            return t
+        if t in PRIMITIVES:
+            return PRIMITIVES[t]()
 
-        if is_schema(origin):
-            return origin
-
-        if origin is typing.Union:
-            args = [self.coerce_generics(x) for x in annotation.__args__]
-            any_of = [arg for arg in args if is_field(arg) or is_schema(arg)]
-            return Union(any_of=any_of)
-
-        if isinstance(origin, type):
-            if issubclass(origin, typing.List):
-                if hasattr(annotation, "__args__"):
-                    arg = self.coerce_generics(annotation.__args__[0])
-                    if is_schema(arg):
-                        arg = Reference(to=arg)
-                    if is_field(arg):
-                        return Array(items=arg)
-                return Array()
-            elif issubclass(origin, typing.Tuple):
-                if hasattr(annotation, "__args__"):
-                    args = annotation.__args__
-                    if len(args) == 2 and args[1] is ...:
-                        arg = self.coerce_generics(annotation.__args__[0])
-                        if is_schema(arg):
-                            arg = Reference(to=arg)
-                        if is_field(arg):
-                            return Array(items=arg)
-                    else:
-                        args = [self.coerce_generics(arg) for arg in args]
-                        args = [
-                            Reference(arg) if is_schema(arg) else arg
-                            for arg in args if is_field(arg) or is_schema(arg)
-                        ]
-                        if args:
-                            return Array(items=args)
-                return Array()
-            elif issubclass(origin, typing.Mapping):
-                if hasattr(annotation, "__args__"):
-                    arg = self.coerce_generics(annotation.__args__[1])
-                    if is_schema(arg):
-                        arg = Reference(to=arg)
-                    if is_field(arg):
-                        return Object(additional_properties=arg)
+        o = getattr(t, "__origin__", t)
+        if o is typing.Union:
+            args = [self.coerce_generics(x) for x in t.__args__]
+            return Union(any_of=args)
+        if issubclass(o, (typing.Sequence, typing.Set)):
+            unique_items = issubclass(o, typing.Set)
+            if hasattr(t, "__args__") and not t._special:
+                arg = self.coerce_generics(t.__args__[0])
+                return Array(items=Reference(to=arg) if is_schema(arg) else arg,
+                             unique_items=unique_items)
+            else:
+                return Array(unique_items=unique_items)
+        elif issubclass(o, typing.Mapping):
+            if hasattr(t, "__args__") and not t._special:
+                arg = self.coerce_generics(t.__args__[1])
+                return Object(additional_properties=Reference(to=arg) if is_schema(arg) else arg)
+            else:
                 return Object(additional_properties=True)
-        else:
-            try:
-                return PRIMITIVES[annotation]()
-            except KeyError:
-                pass
+        elif issubclass(o, typing.Tuple):
+            if hasattr(t, "__args__") and not t._special:
+                if len(t.__args__) == 2 and t.__args__[1] is ...:
+                    arg = self.coerce_generics(t.__args__[0])
+                    return Array(items=Reference(to=arg) if is_schema(arg) else arg)
+                else:
+                    args = [
+                        (Reference(x) if is_schema(x) else x)
+                        for x in [self.coerce_generics(arg) for arg in t.__args__]
+                    ]
+                    return Array(items=args)
+            else:
+                return Array()
+        return Any()
 
 
 class Include:
