@@ -51,7 +51,6 @@ class ValidatePathParamsComponent(Component):
                 route: Route,
                 path_params: http.PathParams) -> ValidatedPathParams:
         path_fields = route.link.path_fields
-        print({field.name: field.schema for field in path_fields})
         validator = schema.Object(
             properties={field.name: field.schema for field in path_fields},
             required=[field.name for field in path_fields]
