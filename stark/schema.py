@@ -118,9 +118,11 @@ class Schema(SchemaBase):
         return cls._validator
 
 
-class UUID(String):
-    def __init__(self, **kwargs: typing.Any) -> None:
-        super().__init__(format="uuid", **kwargs)
+def uuid(**kwargs):
+    return String(format="uuid", **kwargs)
+
+
+UUID = uuid
 
 
 class Reference(ReferenceBase):
@@ -130,53 +132,3 @@ class Reference(ReferenceBase):
         if not isinstance(obj, self.target):
             obj = self.target(obj)
         return dict(obj)
-
-
-#
-# class Lookup(Field):
-#     errors = {
-#         "null": "May not be null.",
-#         "choice": "Not a valid choice.",
-#     }
-#
-#     def __init__(
-#         self,
-#         *,
-#         item: Field = None,
-#         lookup: typing.Callable[[typing.Any], typing.Any] = None,
-#         value: typing.Callable[[typing.Any], typing.Any] = None,
-#         **kwargs: typing.Any
-#     ) -> None:
-#         super().__init__(**kwargs)
-#         assert isinstance(item, Field), (
-#             "`item` must be a field."
-#         )
-#         assert callable(lookup), (
-#             "`lookup` must be a callable."
-#         )
-#         assert value is None or callable(value), (
-#             "`value` must be a callable."
-#         )
-#         self.item = item
-#         self.lookup = lookup
-#         if value:
-#             self.value = value
-#
-#     def value(self, obj):
-#         return obj.id
-#
-#     def validate(self, value: typing.Any, *, strict: bool = False) -> typing.Any:
-#         if value is None and self.allow_null:
-#             return None
-#         elif value is None:
-#             raise self.validation_error("null")
-#         # noinspection PyBroadException
-#         try:
-#             return self.lookup(self.item.validate(value, strict=strict))
-#         except ValidationError:
-#             raise
-#         except Exception:
-#             self.validation_error("choice")
-#
-#     def serialize(self, obj: typing.Any) -> typing.Any:
-#         return self.item.serialize(self.value(obj))

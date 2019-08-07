@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 from stark import exceptions
-from stark.server.components import ReturnValue
+from stark.server.components import ReturnValue, Parameter
 
 
 class BaseInjector:
@@ -16,7 +16,7 @@ class Injector(BaseInjector):
     allow_async = False
 
     def __init__(self, components, initial):
-        self.components = [self.ensure_component(comp) for comp in components]
+        self.components = components
         self.initial = dict(initial)
         self.reverse_initial = {
             val: key for key, val in initial.items()
@@ -24,18 +24,43 @@ class Injector(BaseInjector):
         self.singletons = {}
         self.resolver_cache = {}
 
-    @staticmethod
-    def ensure_component(comp):
-        msg = 'Component "%s" must implement `identity` method.'
-        assert hasattr(comp, 'identity') and callable(comp.identity),\
-            msg % comp.__class__.__name__
-        msg = 'Component "%s" must implement `can_handle_parameter` method.'
-        assert hasattr(comp, 'can_handle_parameter') and callable(comp.can_handle_parameter),\
-            msg % comp.__class__.__name__
-        msg = 'Component "%s" must implement `resolve` method.'
-        assert hasattr(comp, 'resolve') and callable(comp.resolve),\
-            msg % comp.__class__.__name__
-        return comp
+    def resolve_validation_parameters(self,
+                                      func):
+        unique = {}
+        for holder, param in self._resolve_validation_parameters(func, set()):
+            if param.name in unique:
+                cur_holder, cur_param = unique[param.name]
+                if cur_param != param:
+                    msg = "\nConflicting parameters:\n%s( .. %s ..)\nand\n%s ( .. %s ..)"
+                    raise exceptions.ConfigurationError(msg % (cur_holder, cur_param, holder, param))
+                elif not cur_param.description and param.description:
+                    unique[param.name] = (holder, param)
+            else:
+                unique[param.name] = (holder, param)
+        return {k: v[1] for k, v in unique.items()}
+
+    def _resolve_validation_parameters(self,
+                                       func,
+                                       seen_state):
+        parameters = []
+        signature = inspect.signature(func)
+        for parameter in signature.parameters.values():
+            if (parameter.annotation in (ReturnValue, inspect.Parameter)
+                    or parameter.annotation in self.reverse_initial):
+                continue
+            for component in self.components:
+                if component.can_handle_parameter(parameter):
+                    identity = component.identity(parameter)
+                    if identity not in seen_state:
+                        seen_state.add(identity)
+                        params = component.get_validation_parameters(func, parameter)
+                        parameters += [(func, Parameter.from_obj(p)) for p in params]
+                        parameters += self._resolve_validation_parameters(component.resolve, seen_state)
+                    break
+            else:
+                msg = 'No component able to handle parameter "%s" on function "%s".'
+                raise exceptions.ConfigurationError(msg % (parameter.name, func.__qualname__))
+        return parameters
 
     def resolve_function(self,
                          func,
@@ -51,9 +76,13 @@ class Injector(BaseInjector):
         signature = inspect.signature(func)
 
         if output_name is None:
-            if signature.return_annotation in self.reverse_initial:
+            if inspect.isclass(func):
+                return_annotation = func
+            else:
+                return_annotation = signature.return_annotation
+            if return_annotation in self.reverse_initial:
                 # some functions can override initial state
-                output_name = self.reverse_initial[signature.return_annotation]
+                output_name = self.reverse_initial[return_annotation]
             else:
                 output_name = 'return_value'
 

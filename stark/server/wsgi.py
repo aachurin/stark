@@ -80,6 +80,7 @@ class QueryParamComponent(Component):
         name = parameter.name
         if name in query_params:
             return http.QueryParam(query_params[name])
+        return None
 
 
 class HeadersComponent(Component):

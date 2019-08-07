@@ -2,9 +2,9 @@ from typing import Union
 from stark.schema import Message, ValidationError, ParseError
 
 
-__all__ = ('ValidationError', 'Message', 'ParseError', 'NoReverseMatch', 'NoCodecAvailable', 'ConfigurationError',
-           'HTTPException', 'Found', 'BadRequest', 'Forbidden', 'NotFound', 'MethodNotAllowed', 'NotAcceptable',
-           'UnsupportedMediaType')
+__all__ = ("ValidationError", "Message", "ParseError", "NoReverseMatch", "NoCodecAvailable", "ConfigurationError",
+           "HTTPException", "Found", "BadRequest", "AuthenticationError", "Forbidden", "NotFound",
+           "MethodNotAllowed", "NotAcceptable", "UnsupportedMediaType")
 
 
 class NoReverseMatch(Exception):
@@ -42,7 +42,7 @@ class HTTPException(Exception):
 
 class Found(HTTPException):
     default_status_code = 302
-    default_detail = 'Found'
+    default_detail = "Found"
 
     def __init__(self,
                  location: str,
@@ -52,39 +52,44 @@ class Found(HTTPException):
         super().__init__(detail, status_code)
 
     def get_headers(self):
-        return {'Location': self.location}
+        return {"Location": self.location}
 
 
 class BadRequest(HTTPException):
     default_status_code = 400
-    default_detail = 'Bad request'
+    default_detail = "Bad request"
+
+
+class AuthenticationError(HTTPException):
+    default_status_code = 401
+    default_detail = "Unauthorized"
 
 
 class Forbidden(HTTPException):
     default_status_code = 403
-    default_detail = 'Forbidden'
+    default_detail = "Forbidden"
 
 
 class NotFound(HTTPException):
     default_status_code = 404
-    default_detail = 'Not found'
+    default_detail = "Not found"
 
 
 class MethodNotAllowed(HTTPException):
     default_status_code = 405
-    default_detail = 'Method not allowed'
+    default_detail = "Method not allowed"
 
 
 class NotAcceptable(HTTPException):
     default_status_code = 406
-    default_detail = 'Could not satisfy the request Accept header'
+    default_detail = "Could not satisfy the request Accept header"
 
 
 class Conflict(HTTPException):
     default_status_code = 409
-    default_detail = 'Conflict'
+    default_detail = "Conflict"
 
 
 class UnsupportedMediaType(HTTPException):
     default_status_code = 415
-    default_detail = 'Unsupported Content-Type header in request'
+    default_detail = "Unsupported Content-Type header in request"

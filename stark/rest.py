@@ -1,11 +1,9 @@
-import inspect
 import typing
 from stark.server.core import Route
 from stark.server.utils import import_path
 
 
-__all__ = ('resource_routes', 'CreateRoute', 'ListRoute', 'UpdateRoute',
-           'GetRoute', 'DeleteRoute', 'ActionRoute')
+__all__ = ("Router", )
 
 
 def make_create_route(resource: str,
@@ -22,7 +20,7 @@ def make_create_route(resource: str,
         handler=find_handler(handler),
         documented=documented,
         standalone=standalone,
-        tags=[resource, '#create']
+        tags=[resource, "#create"]
     )
 
 
@@ -40,19 +38,18 @@ def make_list_route(resource: str,
         handler=find_handler(handler),
         documented=documented,
         standalone=standalone,
-        tags=[resource, '#list']
+        tags=[resource, "#list"]
     )
 
 
-def make_get_route(resource: str,
-                   handler: typing.Union[str, typing.Callable],
-                   lookup_param: str,
-                   baseurl: str = None,
-                   documented: bool = True,
-                   standalone: bool = False):
+def make_retrieve_route(resource: str,
+                        handler: typing.Union[str, typing.Callable],
+                        lookup_param: str,
+                        baseurl: str = None,
+                        documented: bool = True,
+                        standalone: bool = False):
     if baseurl is None:
         baseurl = resource
-    check_object_lookup_parameter(lookup_param, handler)
     url = "/" + ("%s/{%s}" % (baseurl, lookup_param)).lstrip("/")
     return Route(
         url=url,
@@ -60,7 +57,7 @@ def make_get_route(resource: str,
         handler=find_handler(handler),
         documented=documented,
         standalone=standalone,
-        tags=[resource, '#get']
+        tags=[resource, "#get"]
     )
 
 
@@ -70,7 +67,6 @@ def make_update_route(resource: str,
                       baseurl: str = None,
                       documented: bool = True,
                       standalone: bool = False):
-    check_object_lookup_parameter(lookup_param, handler)
     if baseurl is None:
         baseurl = resource
     url = "/" + ("%s/{%s}" % (baseurl, lookup_param)).lstrip("/")
@@ -84,13 +80,12 @@ def make_update_route(resource: str,
     )
 
 
-def make_delete_route(resource: str,
-                      handler: typing.Union[str, typing.Callable],
-                      lookup_param: str,
-                      baseurl: str = None,
-                      documented: bool = True,
-                      standalone: bool = False):
-    check_object_lookup_parameter(lookup_param, handler)
+def make_destroy_route(resource: str,
+                       handler: typing.Union[str, typing.Callable],
+                       lookup_param: str,
+                       baseurl: str = None,
+                       documented: bool = True,
+                       standalone: bool = False):
     if baseurl is None:
         baseurl = resource
     url = "/" + ("%s/{%s}" % (baseurl, lookup_param)).lstrip("/")
@@ -112,8 +107,6 @@ def make_action_route(resource: str,
                       baseurl: str = None,
                       documented: bool = True,
                       standalone: bool = False):
-    if lookup_param:
-        check_object_lookup_parameter(lookup_param, handler)
     if baseurl is None:
         baseurl = resource
     handler = find_handler(handler)
@@ -133,69 +126,6 @@ def make_action_route(resource: str,
     )
 
 
-def resource_routes(
-        resource: str,
-        baseurl: str = None,
-        lookup_param: str = None,
-        documented: bool = True,
-        create_handler: typing.Union[str, typing.Callable] = None,
-        update_handler: typing.Union[str, typing.Callable] = None,
-        get_handler: typing.Union[str, typing.Callable] = None,
-        list_handler: typing.Union[str, typing.Callable] = None,
-        delete_handler: typing.Union[str, typing.Callable] = None
-):
-    routes = []
-    if create_handler:
-        routes += [
-            make_create_route(
-                resource,
-                create_handler,
-                baseurl=baseurl,
-                documented=documented
-            )
-        ]
-    if list_handler:
-        routes += [
-            make_list_route(
-                resource,
-                list_handler,
-                baseurl=baseurl,
-                documented=documented
-            )
-        ]
-    if get_handler:
-        routes += [
-            make_get_route(
-                resource,
-                get_handler,
-                baseurl=baseurl,
-                lookup_param=lookup_param,
-                documented=documented
-            )
-        ]
-    if update_handler:
-        routes += [
-            make_update_route(
-                resource,
-                update_handler,
-                baseurl=baseurl,
-                lookup_param=lookup_param,
-                documented=documented
-            )
-        ]
-    if delete_handler:
-        routes += [
-            make_delete_route(
-                resource,
-                delete_handler,
-                baseurl=baseurl,
-                lookup_param=lookup_param,
-                documented=documented
-            )
-        ]
-    return routes
-
-
 def find_handler(handler: typing.Union[str, typing.Callable]) -> typing.Callable:
     if isinstance(handler, str):
         handler = import_path(handler)
@@ -203,20 +133,75 @@ def find_handler(handler: typing.Union[str, typing.Callable]) -> typing.Callable
     return handler
 
 
-def check_object_lookup_parameter(lookup_param, handler: typing.Union[str, typing.Callable]):
-    assert lookup_param is not None, (
-        "Resource() missing required `lookup_param`"
-    )
-    handler = find_handler(handler)
-    params = [x for x in inspect.signature(handler).parameters.keys()]
-    assert lookup_param in params, (
-        f"Handler `{handler.__name__}` missing required parameter `{lookup_param}`."
-    )
+class Router:
+    def __init__(
+            self,
+            resource: str,
+            baseurl: str = None,
+            lookup_param: str = None,
+            documented: bool = True
+    ):
+        self.resource = resource
+        self.baseurl = baseurl
+        self.lookup_param = lookup_param
+        self.documented = documented
 
+    def create_route(self, handler: typing.Union[str, typing.Callable]):
+        return make_create_route(
+            self.resource,
+            handler,
+            self.baseurl,
+            self.documented
+        )
 
-CreateRoute = make_create_route
-ListRoute = make_list_route
-UpdateRoute = make_update_route
-GetRoute = make_get_route
-DeleteRoute = make_delete_route
-ActionRoute = make_action_route
+    def list_route(self, handler: typing.Union[str, typing.Callable]):
+        return make_list_route(
+            self.resource,
+            handler,
+            self.baseurl,
+            self.documented
+        )
+
+    def retrieve_route(self, handler: typing.Union[str, typing.Callable]):
+        return make_retrieve_route(
+            self.resource,
+            handler,
+            self.lookup_param,
+            self.baseurl,
+            self.documented
+        )
+
+    def update_route(self, handler: typing.Union[str, typing.Callable]):
+        return make_update_route(
+            self.resource,
+            handler,
+            self.lookup_param,
+            self.baseurl,
+            self.documented
+        )
+
+    def destroy_route(self, handler: typing.Union[str, typing.Callable]):
+        return make_destroy_route(
+            self.resource,
+            handler,
+            self.lookup_param,
+            self.baseurl,
+            self.documented
+        )
+
+    def action_route(
+            self,
+            handler: typing.Union[str, typing.Callable],
+            method: str,
+            action: str = None,
+            detail: bool = True
+    ):
+        return make_action_route(
+            self.resource,
+            handler,
+            method,
+            action,
+            self.lookup_param if detail else None,
+            self.baseurl,
+            self.documented
+        )

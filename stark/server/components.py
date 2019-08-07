@@ -1,7 +1,41 @@
 import inspect
 import typing
-
 from stark import exceptions
+
+
+class Parameter(typing.NamedTuple):
+    name: str
+    annotation: typing.Type
+    description: str = ""
+    default: typing.Any = inspect.Signature.empty
+    empty = inspect.Signature.empty
+
+    def __eq__(self, other):
+        return type(self) == type(other) and self[:3] == other[:3]
+
+    def __repr__(self):
+        r = "%s: %r" % (self.name, self.annotation)
+        if self.default is not self.empty:
+            r += " = " + repr(self.default)
+        return r
+
+    @classmethod
+    def from_obj(cls, other):
+        if isinstance(other, inspect.Parameter):
+            return cls.from_inspect(other)
+        if isinstance(other, Parameter):
+            return other
+        assert isinstance(other, tuple)
+        return cls(*other)
+
+    @classmethod
+    def from_inspect(cls, parameter, description=""):
+        assert isinstance(parameter, inspect.Parameter)
+        return cls(parameter.name,
+                   parameter.annotation,
+                   default=parameter.default,
+                   description=description
+                   )
 
 
 class Component:
@@ -44,7 +78,10 @@ class Component:
         # a value for a range of different types.
         #
         # Eg. Include the `Request` instance for any parameter named `request`.
-        return_annotation = inspect.signature(self.resolve).return_annotation
+        if inspect.isclass(self.resolve):
+            return_annotation = self.resolve
+        else:
+            return_annotation = inspect.signature(self.resolve).return_annotation
         if return_annotation is inspect.Signature.empty:
             msg = (
                       'Component "%s" must include a return annotation on the '
@@ -53,9 +90,22 @@ class Component:
             raise exceptions.ConfigurationError(msg)
         return parameter.annotation is return_annotation
 
+    def get_validation_parameters(
+            self,
+            func,
+            parameter: inspect.Parameter
+    ) -> typing.List[typing.Union[Parameter, inspect.Parameter]]:
+        return []
+
     @typing.no_type_check
     def resolve(self):
         raise NotImplementedError()
 
 
 ReturnValue = typing.TypeVar('ReturnValue')
+
+
+def component_from_class(cls: type) -> Component:
+    new_component = Component()
+    new_component.resolve = cls
+    return new_component

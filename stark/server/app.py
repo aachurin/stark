@@ -5,7 +5,7 @@ from stark import exceptions
 from stark.http import HTMLResponse, JSONResponse, PathParams, Response
 from stark.server.adapters import ASGItoWSGIAdapter
 from stark.server.asgi import ASGI_COMPONENTS, ASGIReceive, ASGIScope, ASGISend
-from stark.server.components import ReturnValue
+from stark.server.components import Component, ReturnValue
 from stark.server.core import Route, Settings, generate_document
 from stark.server.injector import ASyncInjector, Injector, BaseInjector
 from stark.server.router import Router
@@ -63,8 +63,8 @@ class App:
         routes = module.routes or []
         routes += self.include_extra_routes(schema_url, docs_url, static_url)
 
-        self.init_document(routes)
         self.init_router(routes)
+        self.init_document(routes)
 
         # Ensure event hooks can all be instantiated.
         self.get_event_hooks()
@@ -96,6 +96,8 @@ class App:
         self.document = generate_document(routes)
 
     def init_router(self, routes):
+        for route in routes:
+            route.setup(self.injector)
         self.router = Router(routes)
 
     def init_templates(self, template_dirs):
@@ -115,9 +117,21 @@ class App:
             self.statics = StaticFiles(static_url, static_dirs)
 
     def init_injector(self, components=None):
-        components = components if components else []
-        components = list(WSGI_COMPONENTS + VALIDATION_COMPONENTS) + components
-        components = [(import_path(c)() if isinstance(c, str) else c) for c in components]
+        app_components = list(WSGI_COMPONENTS + VALIDATION_COMPONENTS)
+        for comp in (components or []):
+            if isinstance(comp, str):
+                comp = import_path(comp, ["components", "COMPONENTS"])
+            if isinstance(comp, Component):
+                app_components.append(comp)
+            elif isinstance(comp, (list, tuple)):
+                for c in comp:
+                    if not isinstance(c, Component):
+                        msg = "Could not load component %r"
+                        raise exceptions.ConfigurationError(msg % c)
+                app_components += list(comp)
+            else:
+                msg = "Could not load component %r"
+                raise exceptions.ConfigurationError(msg % comp)
         initial_components = {
             'environ': WSGIEnviron,
             'start_response': WSGIStartResponse,
@@ -128,7 +142,7 @@ class App:
             'response': Response,
             'settings': Settings
         }
-        self.injector = Injector(components, initial_components)
+        self.injector = Injector(app_components, initial_components)
 
     def get_event_hooks(self):
         event_hooks = []
@@ -178,6 +192,8 @@ class App:
 
     @staticmethod
     def render_response(return_value: ReturnValue) -> Response:
+        if return_value is None:
+            return Response("No Content", 204)
         if isinstance(return_value, Response):
             return return_value
         elif isinstance(return_value, str):

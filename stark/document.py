@@ -111,6 +111,7 @@ class Link:
                  response: 'Response' = None,
                  title: str = '',
                  description: str = '',
+                 long_description: str = '',
                  tags: typing.Sequence[str] = None,
                  fields: typing.Sequence['Field'] = None):
 
@@ -141,7 +142,7 @@ class Link:
         # a corresponding path field.
         for path_name in url_path_names:
             if path_name not in [field.name for field in path_fields]:
-                path_fields += [Field(name=path_name, location='path', required=True)]
+                path_fields += [Field(name=path_name, location='path', schema=schema.String(), required=True)]
 
         self.url = url
         self.method = method

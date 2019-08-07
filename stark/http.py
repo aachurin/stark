@@ -252,5 +252,6 @@ class JSONResponse(Response):
             return DateField.serialize(obj)
         if isinstance(obj, time):
             return TimeField.serialize(obj)
-        error = "Object of type '%s' is not JSON serializable."
-        raise TypeError(error % type(obj).__name__)
+        if hasattr(obj, "__json__"):
+            return obj.__json__()
+        return str(obj)

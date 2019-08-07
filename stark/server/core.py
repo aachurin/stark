@@ -5,8 +5,7 @@ import datetime
 import decimal
 import uuid
 from stark import http, document, exceptions
-from stark.server.utils import import_path
-from stark.server.docstrings import parse_docstring
+from stark.server.utils import import_path, parse_docstring
 from stark.schema import (
     is_field,
     is_schema,
@@ -55,20 +54,6 @@ class Settings:
                 setattr(self, setting, setting_value)
 
 
-PRIMITIVES = {
-    inspect.Parameter.empty: Any,
-    int: Integer,
-    float: Float,
-    str: String,
-    bool: Boolean,
-    datetime.datetime: DateTime,
-    datetime.date: Date,
-    datetime.time: Time,
-    decimal.Decimal: Decimal,
-    uuid.UUID: UUID
-}
-
-
 def issubclass_safe(cls, classinfo):
     try:
         return issubclass(cls, classinfo)
@@ -77,6 +62,8 @@ def issubclass_safe(cls, classinfo):
 
 
 class Route:
+    link = None
+
     def __init__(self,
                  url: str,
                  method: str,
@@ -93,15 +80,68 @@ class Route:
         self.name = name or handler.__name__
         self.documented = documented
         self.standalone = standalone
-        self.link = self.generate_link(url, method, handler, self.name, tags)
+        self.tags = tags
+
+    def setup(self, injector):
+        self.link = LinkGenerator(injector).generate_link(
+            self.url,
+            self.method,
+            self.handler,
+            self.name,
+            self.tags
+        )
+
+
+class Include:
+
+    section = None
+
+    def __init__(self, url, name, routes, documented=True):
+        if isinstance(routes, str):
+            routes = import_path(routes, ["routes", "ROUTES"])
+        self.url = url
+        self.name = name
+        self.routes = routes
+        self.documented = documented
+
+    def setup(self, injector):
+        content = []
+        for item in self.routes:
+            item.setup(injector)
+            if isinstance(item, Route):
+                content.append(item.link)
+            elif isinstance(item, Include):
+                content.append(item.section)
+        self.section = document.Section(name=self.name, content=content)
+
+
+PRIMITIVES = {
+    inspect.Parameter.empty: Any,
+    int: Integer,
+    float: Float,
+    str: String,
+    bool: Boolean,
+    datetime.datetime: DateTime,
+    datetime.date: Date,
+    datetime.time: Time,
+    decimal.Decimal: Decimal,
+    uuid.UUID: UUID
+}
+
+
+class LinkGenerator:
+
+    def __init__(self, injector):
+        self.injector = injector
 
     def generate_link(self, url, method, handler, name, tags):
-        description = parse_docstring(handler.__doc__)
-        fields = self.generate_fields(url, method, handler, description["params"])
+        docstring = parse_docstring(handler.__doc__)
+        fields = self.generate_fields(url, method, handler)
         response = self.generate_response(handler)
         encoding = None
         if any([f.location == "body" for f in fields]):
             encoding = "application/json"
+        description = (docstring.short_description + "\n" + docstring.long_description).strip()
         return document.Link(
             url=url,
             method=method,
@@ -109,20 +149,20 @@ class Route:
             encoding=encoding,
             fields=fields,
             response=response,
-            description=description["short_description"],
+            description=description,
             tags=tags
         )
 
-    def generate_fields(self, url, method, handler, description):
+    def generate_fields(self, url, method, handler):
         fields = []
         path_names = [
             item.strip("{}").lstrip("+") for item in re.findall("{[^}]*}", url)
         ]
         body_params = []
-        parameters = inspect.signature(handler).parameters
+        parameters = self.injector.resolve_validation_parameters(handler)
         for name, param in parameters.items():
             if name in path_names:
-                fields.append(self.generate_path_field(param, description.get(name, "")))
+                fields.append(self.generate_path_field(param))
             elif is_schema(param.annotation):
                 if method in ("GET", "DELETE"):
                     fields += self.generate_query_fields_from_schema(param)
@@ -130,7 +170,7 @@ class Route:
                     fields.append(document.Field(name=name, location="body", schema=param.annotation))
                     body_params.append(param)
             else:
-                fields += self.generate_query_fields(param, description.get(name, ""))
+                fields += self.generate_query_fields(param)
 
         if len(body_params) > 1:
             params = "\n  ".join(f"{x.name}: {x.annotation.__name__}" for x in body_params)
@@ -143,36 +183,21 @@ class Route:
         return fields
 
     @staticmethod
-    def generate_path_field(param, description):
-        schema = None
+    def generate_path_field(param):
         try:
-            schema = PRIMITIVES[param.annotation](description=description)
+            schema = PRIMITIVES[param.annotation](description=param.description)
         except KeyError:
-            if isinstance(param.annotation, type) and hasattr(param.annotation, "__schema__"):
-                schema = param.annotation.__schema__()
-            if not is_field(schema):
-                raise TypeError(
-                    f"Unsupported annotation {param.annotation} for path parameter `{param.name}`"
-                )
+            raise TypeError(
+                f"Annotation {param.annotation} is not suitable for path parameter `{param.name}`"
+            )
         return document.Field(name=param.name, location="path", schema=schema)
 
     @staticmethod
-    def generate_query_fields(param, description):
+    def generate_query_fields(param):
         t = param.annotation
-        if hasattr(t, "__schema__"):
-            schema = t.__schema__()
-            if isinstance(schema, (list, tuple)):
-                schema = dict(schema)
-            return [
-                document.Field(name=name, location="query", schema=field)
-                for name, field in schema.items()
-            ]
-
-        kwargs = {"description": description}
+        kwargs = {"description": param.description}
         if t in PRIMITIVES:
             schema = PRIMITIVES[t]
-        elif t is http.QueryParam:
-            schema = String
         else:
             o = getattr(t, "__origin__", t)
             try:
@@ -230,6 +255,8 @@ class Route:
 
     def generate_response(self, handler):
         annotation = inspect.signature(handler).return_annotation
+        if annotation in (None, inspect.Signature.empty):
+            return document.Response(encoding="application/json", status_code=204)
         annotation = self.coerce_generics(annotation)
         return document.Response(encoding="application/json", status_code=200, schema=annotation)
 
@@ -271,33 +298,6 @@ class Route:
             else:
                 return Array()
         return Any()
-
-
-class Include:
-    def __init__(self, url, name, routes, documented=True):
-        if isinstance(routes, str):
-            routes = import_path([routes + ".routes", routes])
-        self.url = url
-        self.name = name
-        self.routes = routes
-        self.documented = documented
-        self.section = self.generate_section(routes, name)
-
-    def generate_section(self, routes, name):
-        content = self.generate_content(routes)
-        return document.Section(name=name, content=content)
-
-    @staticmethod
-    def generate_content(routes):
-        content = []
-        for item in routes:
-            if isinstance(item, Route):
-                if item.link is not None:
-                    content.append(item.link)
-            elif isinstance(item, Include):
-                if item.section is not None:
-                    content.append(item.section)
-        return content
 
 
 def generate_document(routes):

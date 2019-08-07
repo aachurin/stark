@@ -3,10 +3,13 @@ import typing
 import datetime
 import decimal
 import uuid
+
 from stark import codecs, exceptions, http, schema
 from stark.conneg import negotiate_content_type
-from stark.server.components import Component
+from stark.server.components import Component, Parameter
+from stark.server.utils import parse_docstring
 from stark.server.core import Route
+
 
 ValidatedPathParams = typing.NewType("ValidatedPathParams", dict)
 ValidatedQueryParams = typing.NewType("ValidatedQueryParams", dict)
@@ -48,6 +51,7 @@ class ValidatePathParamsComponent(Component):
                 route: Route,
                 path_params: http.PathParams) -> ValidatedPathParams:
         path_fields = route.link.path_fields
+        print({field.name: field.schema for field in path_fields})
         validator = schema.Object(
             properties={field.name: field.schema for field in path_fields},
             required=[field.name for field in path_fields]
@@ -101,11 +105,28 @@ class ValidateRequestDataComponent(Component):
             raise exceptions.BadRequest(dict(exc))
 
 
-class PrimitiveParamComponent(Component):
+class ParamComponent(Component):
+
+    def get_validation_parameters(self,
+                                  func,
+                                  parameter: inspect.Parameter):
+        docstring = parse_docstring(func.__doc__)
+        return [
+            Parameter.from_inspect(
+                parameter,
+                description=docstring.params.get(parameter.name, "")
+            )
+        ]
+
+    def resolve(self):
+        raise NotImplementedError()
+
+
+class PrimitiveParamComponent(ParamComponent):
     def can_handle_parameter(self, parameter: inspect.Parameter):
         return parameter.annotation in (
-            str, int, float, bool, datetime.datetime, datetime.date,
-            datetime.time, decimal.Decimal, uuid.UUID, parameter.empty
+            inspect.Parameter.empty, int, float, str, bool,
+            datetime.datetime, datetime.date, datetime.time, decimal.Decimal, uuid.UUID
         )
 
     def resolve(self,
@@ -117,7 +138,7 @@ class PrimitiveParamComponent(Component):
         return query_params[parameter.name]
 
 
-class GenericParamComponent(Component):
+class GenericParamComponent(ParamComponent):
     def can_handle_parameter(self, parameter: inspect.Parameter):
         o = getattr(parameter.annotation, "__origin__", parameter.annotation)
         try:
@@ -131,7 +152,7 @@ class GenericParamComponent(Component):
             annotation_name = parameter.annotation.__name__.lower()
         else:
             annotation_name = repr(parameter.annotation).lower()
-        return annotation_name + ':' + parameter_name
+        return annotation_name + ":" + parameter_name
 
     def resolve(self,
                 parameter: inspect.Parameter,
@@ -139,7 +160,7 @@ class GenericParamComponent(Component):
         return query_params[parameter.name]
 
 
-class CompositeParamComponent(Component):
+class CompositeParamComponent(ParamComponent):
     def can_handle_parameter(self, parameter: inspect.Parameter):
         return (isinstance(parameter.annotation, type)
                 and issubclass(parameter.annotation, schema.SchemaBase))
