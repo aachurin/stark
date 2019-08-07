@@ -54,6 +54,7 @@ class App:
             assert isinstance(event_hooks, list), msg
 
         self.debug = getattr(self.settings, "DEBUG", False)
+        self.propagate_exceptions = getattr(self.settings, "PROPAGATE_EXCEPTIONS", self.debug)
         self.init_injector(components)
         self.init_templates(template_dirs)
         self.init_staticfiles(static_url, static_dirs)
@@ -211,7 +212,7 @@ class App:
         return JSONResponse('Server error', 500, exc_info=sys.exc_info())
 
     def finalize_wsgi(self, response: Response, start_response: WSGIStartResponse):
-        if self.debug and response.exc_info is not None:
+        if self.propagate_exceptions and response.exc_info is not None:
             exc_info = response.exc_info
             raise exc_info[0].with_traceback(exc_info[1], exc_info[2])
 
@@ -377,7 +378,7 @@ class ASyncApp(App):
 
     async def finalize_asgi(self, response: Response, send: ASGISend, scope: ASGIScope):
         if response.exc_info is not None:
-            if self.debug or scope.get('raise_exceptions', False):
+            if self.propagate_exceptions or scope.get('raise_exceptions', False):
                 exc_info = response.exc_info
                 raise exc_info[0].with_traceback(exc_info[1], exc_info[2])
 
