@@ -53,7 +53,7 @@ class App:
             msg = "event_hooks must be a list."
             assert isinstance(event_hooks, list), msg
 
-        self.debug = False
+        self.debug = getattr(self.settings, "DEBUG", False)
         self.init_injector(components)
         self.init_templates(template_dirs)
         self.init_staticfiles(static_url, static_dirs)
