@@ -255,3 +255,25 @@ class JSONResponse(Response):
         if hasattr(obj, "__json__"):
             return obj.__json__()
         return str(obj)
+
+
+class LazyResponse:
+    def __init__(self,
+                 content: typing.Any,
+                 status_code: int = 200,
+                 headers: typing.Union[StrMapping, StrPairs] = None,
+                 exc_info=None,
+                 renderer=Response) -> None:
+        self.content = content
+        self.status_code = status_code
+        self.headers = headers
+        self.exc_info = exc_info
+        self.renderer = renderer
+
+    def render_response(self):
+        return self.renderer(
+            self.content,
+            self.status_code,
+            self.headers,
+            self.exc_info
+        )

@@ -2,7 +2,7 @@ import sys
 import importlib
 import werkzeug
 from stark import exceptions
-from stark.http import HTMLResponse, JSONResponse, PathParams, Response
+from stark.http import HTMLResponse, JSONResponse, PathParams, Response, LazyResponse
 from stark.server.adapters import ASGItoWSGIAdapter
 from stark.server.asgi import ASGI_COMPONENTS, ASGIReceive, ASGIScope, ASGISend
 from stark.server.components import Component, ReturnValue
@@ -197,6 +197,8 @@ class App:
             return Response("No Content", 204)
         if isinstance(return_value, Response):
             return return_value
+        elif isinstance(return_value, LazyResponse):
+            return return_value.render_response()
         elif isinstance(return_value, str):
             return HTMLResponse(return_value)
         return JSONResponse(return_value)

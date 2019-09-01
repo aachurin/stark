@@ -226,7 +226,7 @@ class JSONSchemaEncoder:
     @staticmethod
     def get_standard_properties(field: Field) -> dict:
         data = {}
-        if field.has_default():
+        if field.has_default() and field.default is not ...:
             data["default"] = field.default
         if field.title:
             data["title"] = field.title
