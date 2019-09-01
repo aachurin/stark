@@ -258,17 +258,20 @@ class JSONResponse(Response):
 
 
 class LazyResponse:
+    renderer = Response
+
     def __init__(self,
                  content: typing.Any,
                  status_code: int = 200,
                  headers: typing.Union[StrMapping, StrPairs] = None,
                  exc_info=None,
-                 renderer=Response) -> None:
+                 renderer=None) -> None:
         self.content = content
         self.status_code = status_code
         self.headers = headers
         self.exc_info = exc_info
-        self.renderer = renderer
+        if renderer is not None:
+            self.renderer = renderer
 
     def render_response(self):
         return self.renderer(
